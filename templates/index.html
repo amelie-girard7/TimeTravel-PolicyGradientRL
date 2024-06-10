@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Attention Map Visualization</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+        }
+        #attention-map {
+            width: 100%;
+            height: 600px;
+            overflow: auto;
+        }
+        select, button {
+            padding: 10px;
+            font-size: 16px;
+            margin-right: 10px;
+        }
+        h1 {
+            margin-bottom: 20px;
+        }
+    </style>
+</head>
+<body>
+    <h1>Attention Map Visualization</h1>
+    <select id="story-select">
+        <!-- Options will be populated by JavaScript -->
+    </select>
+    <button id="visualize-button">Visualize Attention</button>
+    <button id="model-view-button">Model View</button>
+    <button id="head-view-button">Head View</button>
+    <div id="attention-map">
+        <img id="heatmap-image" src="" alt="Attention Heatmap" style="display: none; max-width: 100%;">
+        <iframe id="bertviz-container" style="display: none; width: 100%; height: 600px; border: none;"></iframe>
+    </div>
+    
+    <script src="https://cdn.jsdelivr.net/npm/axios/dist/axios.min.js"></script>
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            const storySelect = document.getElementById('story-select');
+            const visualizeButton = document.getElementById('visualize-button');
+            const modelViewButton = document.getElementById('model-view-button');
+            const headViewButton = document.getElementById('head-view-button');
+            const heatmapImage = document.getElementById('heatmap-image');
+            const bertvizContainer = document.getElementById('bertviz-container');
+
+            // Fetch and populate stories
+            axios.get('/get_stories').then(response => {
+                const stories = response.data;
+                stories.forEach(story => {
+                    const option = document.createElement('option');
+                    option.value = story.story_id;
+                    option.textContent = story.premise;
+                    storySelect.appendChild(option);
+                });
+            });
+
+            // Visualize attention on button click
+            visualizeButton.addEventListener('click', () => {
+                const selectedStoryId = storySelect.value;
+                axios.post('/visualize_attention', { story_id: selectedStoryId }, { responseType: 'blob' })
+                    .then(response => {
+                        const url = URL.createObjectURL(response.data);
+                        heatmapImage.src = url;
+                        heatmapImage.style.display = 'block';
+                        bertvizContainer.style.display = 'none';
+                    });
+            });
+
+            // Visualize model view on button click
+            modelViewButton.addEventListener('click', () => {
+                const selectedStoryId = storySelect.value;
+                axios.post('/visualize_model_view', { story_id: selectedStoryId })
+                    .then(response => {
+                        console.log('visualize_model_view', response);
+                        heatmapImage.style.display = 'none';
+                        bertvizContainer.src = '/model_view';
+                        bertvizContainer.style.display = 'block';
+                    });
+            });
+
+            // Visualize head view on button click
+            headViewButton.addEventListener('click', () => {
+                const selectedStoryId = storySelect.value;
+                axios.post('/visualize_head_view', { story_id: selectedStoryId })
+                    .then(response => {
+                        heatmapImage.style.display = 'none';
+                        bertvizContainer.src = '/head_view';
+                        bertvizContainer.style.display = 'block';
+                    });
+            });
+        });
+    </script>
+</body>
+</html>

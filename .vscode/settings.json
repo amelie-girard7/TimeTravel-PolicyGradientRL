@@ -1,0 +1,48 @@
+{
+    "jupyter.kernels.filter": [
+        {
+            "path": "/home/agirard/Data/anaconda3/bin/python",
+            "type": "pythonEnvironment"
+        },
+        {
+            "path": "/data/agirard/anaconda3/bin/python",
+            "type": "pythonEnvironment"
+        },
+        {
+            "path": "/data/agirard/anaconda3/envs/counterfactual-env/bin/python",
+            "type": "pythonEnvironment"
+        },
+        {
+            "path": "/usr/bin/python2",
+            "type": "pythonEnvironment"
+        },
+        {
+            "path": "/bin/python2",
+            "type": "pythonEnvironment"
+        },
+        {
+            "path": "/bin/python",
+            "type": "pythonEnvironment"
+        },
+        {
+            "path": "/bin/python3.8",
+            "type": "pythonEnvironment"
+        },
+        {
+            "path": "/usr/bin/python3.8",
+            "type": "pythonEnvironment"
+        },
+        {
+            "path": "/bin/python3.9",
+            "type": "pythonEnvironment"
+        },
+        {
+            "path": "/usr/bin/python3.9",
+            "type": "pythonEnvironment"
+        },
+        {
+            "path": "/data/agirard/anaconda3/envs/transformers_explain/bin/python",
+            "type": "pythonEnvironment"
+        }
+    ]
+}
