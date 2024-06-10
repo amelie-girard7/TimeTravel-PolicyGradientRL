@@ -132,3 +132,8 @@ docs/
 src/utils/tools/
 logs/
 .vscode/
+
+# Add any additional large directories or unnecessary files here
+checkpoints/
+large_files/
+temp/
