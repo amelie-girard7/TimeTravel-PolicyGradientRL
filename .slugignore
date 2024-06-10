@@ -80,29 +80,6 @@ target/
 profile_default/
 ipython_config.py
 
-# pyenv
-.python-version
-
-# pipenv
-Pipfile.lock
-
-# poetry
-poetry.lock
-
-# pdm
-pdm.lock
-.pdm.toml
-
-# PEP 582
-__pypackages__/
-
-# Celery stuff
-celerybeat-schedule
-celerybeat.pid
-
-# SageMath parsed files
-*.sage.py
-
 # Environments
 .env
 .venv
@@ -148,3 +125,10 @@ bertviz/
 
 # Ignore all files and folders in the 'results' directory
 results/
+
+# Ignore specific folders
+images/
+docs/
+src/utils/tools/
+logs/
+.vscode/
