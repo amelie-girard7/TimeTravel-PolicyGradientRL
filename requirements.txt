@@ -114,7 +114,7 @@ pandocfilters==1.5.1
 parso==0.8.3
 pexpect==4.8.0
 Pillow==10.1.0
-platformdirs==4.2.2
+platformdirs
 portalocker==2.8.2
 preshed==3.0.9
 prometheus_client==0.20.0

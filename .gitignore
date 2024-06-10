@@ -172,3 +172,15 @@ data/
 
 # Ignore all files and folders in the 'results' directory
 results/
+
+# Additional directories to ignore
+src/BARTScore_metric/
+src/docs/
+src/__pycache__/
+
+# Ignore specific folders
+images/
+docs/
+src/utils/tools/
+logs/
+.vscode/
