@@ -15,7 +15,7 @@ from bertviz import model_view, head_view
 app = Flask(__name__)
 
 # Set the specific GPU to use
-os.environ['CUDA_VISIBLE_DEVICES'] = '0'  # Adjust the index to select a different GPU
+os.environ['CUDA_VISIBLE_DEVICES'] = '1'  # Adjust the index to select a different GPU
 
 # Check if CUDA is available and set the device
 if torch.cuda.is_available():
@@ -40,30 +40,89 @@ print("Loading tokenizer from the local directory...")
 tokenizer = T5Tokenizer.from_pretrained(tokenizer_dir, legacy=False)
 print("Tokenizer loaded.")
 
-# Path to the checkpoint file
-checkpoint_path = "/data/agirard/Projects/Timetravel/models/model_2024-05-14-20/checkpoint-epoch=00-val_loss=8.20.ckpt"
+# Define the model mapping
+MODEL_MAPPING = {
+    "T5-base weight 1-1": {
+        "checkpoint_path": "models/model_2024-03-22-10/checkpoint-epoch=05-val_loss=0.86.ckpt",
+        "model_dir": "/data/agirard/Projects/Timetravel/models/model_2024-03-22-10",
+        "comment": "T5-base weight 1-1"
+    },
+    "T5-base weight 12-1": {
+        "checkpoint_path": "models/model_2024-04-09-11/checkpoint-epoch=04-val_loss=0.95.ckpt",
+        "model_dir": "/data/agirard/Projects/Timetravel/models/model_2024-04-09-11",
+        "comment": "T5-base weight 12-1"
+    },
+    "T5-base weight 13-1": {
+        "checkpoint_path": "models/model_2024-04-09-22/checkpoint-epoch=04-val_loss=0.95.ckpt",
+        "model_dir": "/data/agirard/Projects/Timetravel/models/model_2024-04-09-22",
+        "comment": "T5-base weight 13-1"
+    },
+    "T5-base weight 20-1": {
+        "checkpoint_path": "models/model_2024-04-08-13/checkpoint-epoch=05-val_loss=1.02.ckpt",
+        "model_dir": "/data/agirard/Projects/Timetravel/models/model_2024-04-08-13",
+        "comment": "T5-base weight 20-1"
+    },
+    "T5-large weight 1-1": {
+        "checkpoint_path": "models/model_2024-03-22-15/checkpoint-epoch=02-val_loss=0.78.ckpt",
+        "model_dir": "/data/agirard/Projects/Timetravel/models/model_2024-03-22-15",
+        "comment": "T5-large weight 1-1"
+    },
+    "T5-large weight 15-1": {
+        "checkpoint_path": "models/model_2024-04-10-10/checkpoint-epoch=03-val_loss=0.89.ckpt",
+        "model_dir": "/data/agirard/Projects/Timetravel/models/model_2024-04-10-10",
+        "comment": "T5-large weight 15-1"
+    },
+    "T5-large weight 20-1": {
+        "checkpoint_path": "models/model_2024-04-08-09/checkpoint-epoch=03-val_loss=0.91.ckpt",
+        "model_dir": "/data/agirard/Projects/Timetravel/models/model_2024-04-08-09",
+        "comment": "T5-large weight 20-1"
+    },
+    "T5-large weight 30-1": {
+        "checkpoint_path": "models/model_2024-04-10-14/checkpoint-epoch=04-val_loss=0.98.ckpt",
+        "model_dir": "/data/agirard/Projects/Timetravel/models/model_2024-04-10-14",
+        "comment": "T5-large weight 30-1"
+    },
+    "T5-large (Gold data) weight 20-1": {
+        "checkpoint_path": "models/model_2024-05-14-20/checkpoint-epoch=00-val_loss=8.20.ckpt",
+        "model_dir": "/data/agirard/Projects/Timetravel/models/model_2024-05-14-20",
+        "comment": "T5-large (Gold data) weight 20-1"
+    },
+    "T5-base (Gold data) weight 13-1": {
+        "checkpoint_path": "models/model_2024-05-13-17/checkpoint-epoch=05-val_loss=0.98.ckpt",
+        "model_dir": "/data/agirard/Projects/Timetravel/models/model_2024-05-13-17",
+        "comment": "T5-base (Gold data) weight 13-1"
+    }
+}
 
 # Function to load model and move it to the correct device
-def load_model(checkpoint_path):
-    print("Loading model from the checkpoint...")
+def load_model(model_key):
+    if model_key not in MODEL_MAPPING:
+        raise ValueError(f"Model {model_key} not found in the mapping.")
+    model_info = MODEL_MAPPING[model_key]
+    checkpoint_path = model_info["checkpoint_path"]
+    model_dir = model_info["model_dir"]
+    comment = model_info["comment"]
+    
+    print(f"Loading model: {comment} from the checkpoint {checkpoint_path}")
     clear_gpu_cache()  # Clear the cache to free up memory
     model = FlanT5FineTuner.load_from_checkpoint(
         checkpoint_path,
         model_name=CONFIG["model_name"],
-        model_dir="/data/agirard/Projects/Timetravel/models/model_2024-05-14-20"
+        model_dir=model_dir
     )
     model = model.to(device)  # Move model to the correct device
     clear_gpu_cache()  # Clear the cache again after loading
     print("Model loaded and moved to device.")
-    return model
+    return model, comment
 
-# Attempt to load the model and handle out-of-memory errors
+# Attempt to load the initial model and handle out-of-memory errors
+initial_model_key = "T5-large (Gold data) weight 20-1"
 try:
-    model = load_model(checkpoint_path)
+    model, model_comment = load_model(initial_model_key)
 except torch.cuda.OutOfMemoryError:
     print("CUDA out of memory. Attempting to free up space and retry.")
     clear_gpu_cache()  # Clear the cache
-    model = load_model(checkpoint_path)
+    model, model_comment = load_model(initial_model_key)
 
 # Move BERTScorer model to the correct device
 model.bert_scorer._model.to(device)
@@ -87,9 +146,25 @@ print("Dataloaders setup completed.")
 # Extract the keys for train, dev, and test from CONFIG and remove the file extension
 test_key = CONFIG["test_file"].split('.')[0]  # 'dev_data_sample'
 
+# Updated index route to include the model comment
 @app.route('/')
 def index():
-    return render_template('index.html')
+    return render_template('index.html', model_comment=model_comment)
+
+@app.route('/get_models', methods=['GET'])
+def get_models():
+    models = [{"key": key, "comment": value["comment"]} for key, value in MODEL_MAPPING.items()]
+    return jsonify(models)
+
+@app.route('/load_model', methods=['POST'])
+def load_selected_model():
+    model_key = request.json.get('model_key')
+    try:
+        global model, model_comment
+        model, model_comment = load_model(model_key)
+        return jsonify({"status": "success", "comment": model_comment})
+    except ValueError as e:
+        return jsonify({"status": "error", "message": str(e)}), 400
 
 @app.route('/get_stories', methods=['GET'])
 def get_stories():

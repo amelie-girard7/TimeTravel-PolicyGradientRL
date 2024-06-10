@@ -12,7 +12,7 @@
             margin: 0;
             padding: 20px;
         }
-        .controls {
+        .controls, .model-controls {
             display: flex;
             flex-wrap: wrap;
             align-items: center;
@@ -22,10 +22,10 @@
             border: 1px solid #ddd;
             border-radius: 8px;
         }
-        .controls label {
+        .controls label, .model-controls label {
             margin-right: 13px; /* Increased by 3 mm (~11px) */
         }
-        select, button {
+        select, button, textarea {
             padding: 10px;
             font-size: 16px;
             margin-right: 10px;
@@ -33,7 +33,7 @@
             border: 1px solid #ddd;
             border-radius: 4px;
         }
-        select {
+        select, textarea {
             flex: 1;
         }
         button {
@@ -65,7 +65,7 @@
             color: #555;
         }
         .story-details textarea {
-            flex: 2;
+            flex: 5; /* Further increased the flex ratio to make text areas even wider */
             margin-right: 10px;
             resize: vertical;
             height: 50px;
@@ -83,14 +83,22 @@
     </style>
 </head>
 <body>
+
+    <div class="model-controls">
+        <label for="model-select">Select Model:</label>
+        <select id="model-select">
+            <!-- Model options will be populated by JavaScript -->
+        </select>
+        <button id="heatmap-button">View Heatmap</button>
+        <button id="head-view-button">View Head Attention</button>
+        <button id="model-view-button">Model View</button>
+    </div>
+    
     <div class="controls">
         <label for="story-select">Select Premise:</label>
         <select id="story-select">
             <!-- Options will be populated by JavaScript -->
         </select>
-        <button id="heatmap-button">View Heatmap</button>
-        <button id="head-view-button">View Head Attention</button>
-        <button id="model-view-button">Model View</button>
     </div>
 
     <div class="story-details" id="story-details">
@@ -108,6 +116,7 @@
         </div>
     </div>
 
+
     <div id="attention-map">
         <img id="heatmap-image" src="" alt="Attention Heatmap" style="display: none; max-width: 100%;">
         <iframe id="bertviz-container" style="display: none; width: 100%; height: 600px; border: none;"></iframe>
@@ -116,6 +125,7 @@
     <script src="https://cdn.jsdelivr.net/npm/axios/dist/axios.min.js"></script>
     <script>
         document.addEventListener('DOMContentLoaded', function() {
+            const modelSelect = document.getElementById('model-select');
             const storySelect = document.getElementById('story-select');
             const heatmapButton = document.getElementById('heatmap-button');
             const modelViewButton = document.getElementById('model-view-button');
@@ -129,6 +139,24 @@
             const editedEndingText = document.getElementById('edited-ending-text');
 
             let stories = [];
+            let modelComments = {};
+
+            // Fetch and populate models
+            axios.get('/get_models').then(response => {
+                const models = response.data;
+                models.forEach((model, index) => {
+                    const option = document.createElement('option');
+                    option.value = model.key;
+                    option.textContent = model.comment;
+                    modelSelect.appendChild(option);
+                    if (index === 0) {
+                        option.selected = true;
+                    }
+                });
+
+                // Trigger change event to load initial model
+                modelSelect.dispatchEvent(new Event('change'));
+            });
 
             // Fetch and populate stories
             axios.get('/get_stories').then(response => {
@@ -146,6 +174,16 @@
 
                 // Trigger change event to load details of the first story
                 storySelect.dispatchEvent(new Event('change'));
+            });
+
+            // Load the selected model
+            modelSelect.addEventListener('change', () => {
+                const selectedModelKey = modelSelect.value;
+                axios.post('/load_model', { model_key: selectedModelKey })
+                    .then(response => {
+                        modelComments = response.data.comment;
+                        console.log('Model loaded:', modelComments); // Log loaded model comment
+                    });
             });
 
             // Display story details on premise selection
