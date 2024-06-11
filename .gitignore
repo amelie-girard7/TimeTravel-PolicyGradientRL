@@ -178,7 +178,7 @@ src/BARTScore_metric/
 src/docs/
 src/__pycache__/
 
-# Ignore specific folders
+# Ignore specific  folders
 images/
 docs/
 src/utils/tools/
