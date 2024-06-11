@@ -11,7 +11,6 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 import numpy as np
 from bertviz import model_view, head_view
-from IPython.display import display, HTML
 
 app = Flask(__name__)
 
@@ -26,6 +25,13 @@ else:
     print("CUDA is not available. Using CPU.")
     device = torch.device("cpu")
 
+# Function to clear GPU cache
+def clear_gpu_cache():
+    if torch.cuda.is_available():
+        print("Clearing GPU cache...")
+        torch.cuda.empty_cache()
+        print("GPU cache cleared.")
+
 # Setup tokenizer directory to use the existing tokenizer
 tokenizer_dir = "/data/agirard/Projects/Timetravel/models/Tokenizers"
 
@@ -37,20 +43,36 @@ print("Tokenizer loaded.")
 # Path to the checkpoint file
 checkpoint_path = "/data/agirard/Projects/Timetravel/models/model_2024-05-14-20/checkpoint-epoch=00-val_loss=8.20.ckpt"
 
-# Load the model from the checkpoint
-print("Loading model from the checkpoint...")
-model = FlanT5FineTuner.load_from_checkpoint(
-    checkpoint_path,
-    model_name=CONFIG["model_name"],
-    model_dir="/data/agirard/Projects/Timetravel/models/model_2024-05-14-20"
-)
-model = model.to(device)  # Move model to the correct device
-print("Model loaded and moved to device.")
+# Function to load model and move it to the correct device
+def load_model(checkpoint_path):
+    print("Loading model from the checkpoint...")
+    clear_gpu_cache()  # Clear the cache to free up memory
+    model = FlanT5FineTuner.load_from_checkpoint(
+        checkpoint_path,
+        model_name=CONFIG["model_name"],
+        model_dir="/data/agirard/Projects/Timetravel/models/model_2024-05-14-20"
+    )
+    model = model.to(device)  # Move model to the correct device
+    clear_gpu_cache()  # Clear the cache again after loading
+    print("Model loaded and moved to device.")
+    return model
+
+# Attempt to load the model and handle out-of-memory errors
+try:
+    model = load_model(checkpoint_path)
+except torch.cuda.OutOfMemoryError:
+    print("CUDA out of memory. Attempting to free up space and retry.")
+    clear_gpu_cache()  # Clear the cache
+    model = load_model(checkpoint_path)
+
+# Move BERTScorer model to the correct device
+model.bert_scorer._model.to(device)
 
 # Function to setup dataloaders
 def setup_dataloaders(tokenizer):
     data_path = CONFIG["data_dir"] / 'transformed'
-    batch_size = CONFIG["batch_size"]
+    batch_size = CONFIG.get("batch_size", 1) // 2  # Ensure batch_size is at least 1
+    batch_size = max(batch_size, 1)  # Ensure batch_size is a positive integer
     num_workers = CONFIG["num_workers"]
     print("Creating dataloaders...")
     dataloaders = create_dataloaders(data_path, tokenizer, batch_size, num_workers)
@@ -101,27 +123,42 @@ def fetch_story_data(story_id):
     tokenized_inputs = tokenizer.encode_plus(
         input_sequence, truncation=True, return_tensors="pt", max_length=CONFIG["max_length"]
     )
-    tokenized_ending = tokenizer.encode_plus(
-        story['edited_ending'], truncation=True, return_tensors="pt", max_length=CONFIG["max_length"]
-    )
 
     input_ids = tokenized_inputs['input_ids'].to(device)
     attention_mask = tokenized_inputs['attention_mask'].to(device)
-    labels = tokenized_ending['input_ids'].to(device)
 
-    # Generate text and capture attention weights using the forward function
-    outputs = model(input_ids=input_ids, attention_mask=attention_mask, labels=labels)
+    # Generate text using the model's generate method
+    print("Generating text using the model's generate method...")
+    generated_outputs = model.model.generate(
+        input_ids=input_ids,
+        attention_mask=attention_mask,
+        max_length=250,
+        return_dict_in_generate=True,
+        output_attentions=True
+    )
+    generated_ids = generated_outputs.sequences  # Extract generated sequences
+    print("Text generation completed.")
 
-    # Extract attention tensors
+    # Extracting attentions using the underlying model's forward method
+    print("Extracting attentions using the underlying model's forward method...")
+    outputs = model.model(
+        input_ids=input_ids,
+        attention_mask=attention_mask,
+        decoder_input_ids=generated_ids,
+        output_attentions=True
+    )
+    print("Attentions extracted.")
+
+    # Extract attention tensors from the output
     encoder_attentions = outputs.encoder_attentions
     decoder_attentions = outputs.decoder_attentions
     cross_attentions = outputs.cross_attentions
 
     # Convert Input IDs to Tokens
     encoder_text = tokenizer.convert_ids_to_tokens(input_ids[0])
-    decoder_text = tokenizer.convert_ids_to_tokens(labels[0])
+    generated_text = tokenizer.convert_ids_to_tokens(generated_ids[0])  # Changed to generated_ids
 
-    return encoder_attentions, decoder_attentions, cross_attentions, encoder_text, decoder_text
+    return encoder_attentions, decoder_attentions, cross_attentions, encoder_text, generated_text
 
 @app.route('/visualize_attention', methods=['POST'])
 def visualize_attention():
@@ -130,7 +167,7 @@ def visualize_attention():
     if data is None:
         return jsonify({"error": "Story not found"}), 404
     
-    encoder_attentions, decoder_attentions, cross_attentions, encoder_text, decoder_text = data
+    encoder_attentions, decoder_attentions, cross_attentions, encoder_text, generated_text = data
 
     # Normalize attention weights
     def normalize_attention(attention):
@@ -139,16 +176,16 @@ def visualize_attention():
         normalized_attention = attention.mean(dim=1).detach().cpu().numpy()
         return normalized_attention
 
-    last_layer_attention = normalize_attention(cross_attentions[-1])
-    attention_to_plot = last_layer_attention[0]
+    first_layer_attention = normalize_attention(cross_attentions[0])  # Use the first layer's cross-attention
+    attention_to_plot = first_layer_attention[0]
 
     # Plot the attention heatmap
     plt.figure(figsize=(20, 10))
-    sns.heatmap(attention_to_plot, xticklabels=encoder_text, yticklabels=decoder_text, cmap='viridis', cbar=True)
+    sns.heatmap(attention_to_plot, xticklabels=encoder_text, yticklabels=generated_text, cmap='viridis', cbar=True)
     plt.xticks(rotation=90)
     plt.xlabel('Input Tokens')
     plt.ylabel('Output Tokens')
-    plt.title('Cross-Attention Weights (Last Layer)')
+    plt.title('Cross-Attention Weights (First Layer)')
     
     # Save the plot as an image
     image_path = '/tmp/attention_heatmap.png'
@@ -172,7 +209,7 @@ def visualize_model_view():
         return jsonify({"error": "Story not found"}), 404
 
     # Unpack the data
-    encoder_attentions, decoder_attentions, cross_attentions, encoder_text, decoder_text = data
+    encoder_attentions, decoder_attentions, cross_attentions, encoder_text, generated_text = data
 
     # Check if attentions were captured
     if encoder_attentions is None or decoder_attentions is None or cross_attentions is None:
@@ -194,7 +231,7 @@ def visualize_model_view():
         decoder_attention=decoder_attentions,
         cross_attention=cross_attentions,
         encoder_tokens=encoder_text,
-        decoder_tokens=decoder_text,
+        decoder_tokens=generated_text,
         html_action='return'
     ).data
     print("HTML content captured")
@@ -218,7 +255,7 @@ def visualize_head_view():
     if data is None:
         return jsonify({"error": "Story not found"}), 404
 
-    encoder_attentions, decoder_attentions, cross_attentions, encoder_text, decoder_text = data
+    encoder_attentions, decoder_attentions, cross_attentions, encoder_text, generated_text = data
 
     if encoder_attentions is None or decoder_attentions is None or cross_attentions is None:
         return jsonify({"error": "Attentions were not captured correctly."}), 500
@@ -229,8 +266,8 @@ def visualize_head_view():
         decoder_attention=decoder_attentions,
         cross_attention=cross_attentions,
         encoder_tokens=encoder_text,
-        decoder_tokens=decoder_text,
-        layer=11,
+        decoder_tokens=generated_text,
+        layer=0,  # Specify the first layer
         html_action='return'
     ).data
 
