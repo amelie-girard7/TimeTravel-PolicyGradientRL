@@ -1,2 +1,0 @@
-src/BARTScore_metric/SUM/REALSumm/final_p.pkl filter=lfs diff=lfs merge=lfs -text
-src/BARTScore_metric/WMT/de-en/final_p.pkl filter=lfs diff=lfs merge=lfs -text
