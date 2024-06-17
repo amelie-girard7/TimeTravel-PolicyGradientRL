@@ -175,7 +175,6 @@ results/
 
 # Additional directories  to ignore
 src/BARTScore_metric/
-src/docs/
 src/__pycache__/
 
 # Ignore specific  folders
