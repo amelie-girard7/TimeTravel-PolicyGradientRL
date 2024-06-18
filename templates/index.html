@@ -2,34 +2,112 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>Attention Map Visualization</title>
+    <title>Story Visualization</title>
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;700&display=swap">
     <style>
         body {
-            font-family: Arial, sans-serif;
+            font-family: 'Roboto', sans-serif;
+            background-color: #f9f9fb;
+            color: #333;
+            margin: 0;
+            padding: 20px;
         }
-        #attention-map {
-            width: 100%;
-            height: 600px;
-            overflow: auto;
+        .controls {
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            margin-bottom: 20px;
+            padding: 20px;
+            background-color: white;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+        }
+        .controls label {
+            margin-right: 13px; /* Increased by 3 mm (~11px) */
         }
         select, button {
             padding: 10px;
             font-size: 16px;
             margin-right: 10px;
+            margin-bottom: 10px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
         }
-        h1 {
+        select {
+            flex: 1;
+        }
+        button {
+            background-color: #00A862;
+            color: white;
+            cursor: pointer;
+            transition: background-color 0.3s ease;
+        }
+        button:hover {
+            background-color: #33C481;
+        }
+        .story-details {
+            margin-top: 20px;
+            border: 1px solid #ddd;
+            padding: 20px;
+            border-radius: 8px;
+            background-color: white;
+        }
+        .story-details .row {
+            display: flex;
+            flex-wrap: wrap;
             margin-bottom: 20px;
+            align-items: center;
+        }
+        .story-details label {
+            flex: 1;
+            margin-right: 10px;
+            font-weight: bold;
+            color: #555;
+        }
+        .story-details textarea {
+            flex: 2;
+            margin-right: 10px;
+            resize: vertical;
+            height: 50px;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            background-color: #f7f7f7;
+        }
+        #attention-map {
+            width: 100%;
+            height: 600px;
+            overflow: auto;
+            margin-top: 20px;
         }
     </style>
 </head>
 <body>
-    <h1>Attention Map Visualization</h1>
-    <select id="story-select">
-        <!-- Options will be populated by JavaScript -->
-    </select>
-    <button id="visualize-button">Visualize Attention</button>
-    <button id="model-view-button">Model View</button>
-    <button id="head-view-button">Head View</button>
+    <div class="controls">
+        <label for="story-select">Select Premise:</label>
+        <select id="story-select">
+            <!-- Options will be populated by JavaScript -->
+        </select>
+        <button id="heatmap-button">View Heatmap</button>
+        <button id="head-view-button">View Head Attention</button>
+        <button id="model-view-button">Model View</button>
+    </div>
+
+    <div class="story-details" id="story-details">
+        <div class="row">
+            <label for="initial-text">Initial:</label>
+            <textarea id="initial-text" readonly></textarea>
+            <label for="original-ending-text">Original Ending:</label>
+            <textarea id="original-ending-text" readonly></textarea>
+        </div>
+        <div class="row">
+            <label for="counterfactual-text">Counterfactual:</label>
+            <textarea id="counterfactual-text" readonly></textarea>
+            <label for="edited-ending-text">Edited Ending:</label>
+            <textarea id="edited-ending-text" readonly></textarea>
+        </div>
+    </div>
+
     <div id="attention-map">
         <img id="heatmap-image" src="" alt="Attention Heatmap" style="display: none; max-width: 100%;">
         <iframe id="bertviz-container" style="display: none; width: 100%; height: 600px; border: none;"></iframe>
@@ -39,25 +117,55 @@
     <script>
         document.addEventListener('DOMContentLoaded', function() {
             const storySelect = document.getElementById('story-select');
-            const visualizeButton = document.getElementById('visualize-button');
+            const heatmapButton = document.getElementById('heatmap-button');
             const modelViewButton = document.getElementById('model-view-button');
             const headViewButton = document.getElementById('head-view-button');
             const heatmapImage = document.getElementById('heatmap-image');
             const bertvizContainer = document.getElementById('bertviz-container');
+            const storyDetails = document.getElementById('story-details');
+            const initialText = document.getElementById('initial-text');
+            const originalEndingText = document.getElementById('original-ending-text');
+            const counterfactualText = document.getElementById('counterfactual-text');
+            const editedEndingText = document.getElementById('edited-ending-text');
+
+            let stories = [];
 
             // Fetch and populate stories
             axios.get('/get_stories').then(response => {
-                const stories = response.data;
-                stories.forEach(story => {
+                stories = response.data;
+                console.log('Fetched stories:', stories); // Log fetched stories
+                stories.forEach((story, index) => {
                     const option = document.createElement('option');
                     option.value = story.story_id;
                     option.textContent = story.premise;
                     storySelect.appendChild(option);
+                    if (index === 0) {
+                        option.selected = true;
+                    }
                 });
+
+                // Trigger change event to load details of the first story
+                storySelect.dispatchEvent(new Event('change'));
             });
 
-            // Visualize attention on button click
-            visualizeButton.addEventListener('click', () => {
+            // Display story details on premise selection
+            storySelect.addEventListener('change', () => {
+                const selectedStoryId = storySelect.value;
+                const story = stories.find(story => story.story_id === selectedStoryId);
+                console.log('Selected story:', story); // Log selected story
+                if (story) {
+                    initialText.value = story.initial;
+                    originalEndingText.value = story.original_ending;
+                    counterfactualText.value = story.counterfactual;
+                    editedEndingText.value = story.edited_ending;
+                    storyDetails.style.display = 'block';
+                } else {
+                    storyDetails.style.display = 'none';
+                }
+            });
+
+            // Visualize heatmap on button click
+            heatmapButton.addEventListener('click', () => {
                 const selectedStoryId = storySelect.value;
                 axios.post('/visualize_attention', { story_id: selectedStoryId }, { responseType: 'blob' })
                     .then(response => {
@@ -73,7 +181,6 @@
                 const selectedStoryId = storySelect.value;
                 axios.post('/visualize_model_view', { story_id: selectedStoryId })
                     .then(response => {
-                        console.log('visualize_model_view', response);
                         heatmapImage.style.display = 'none';
                         bertvizContainer.src = '/model_view';
                         bertvizContainer.style.display = 'block';

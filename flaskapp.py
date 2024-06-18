@@ -85,7 +85,7 @@ dataloaders = setup_dataloaders(tokenizer)
 print("Dataloaders setup completed.")
 
 # Extract the keys for train, dev, and test from CONFIG and remove the file extension
-dev_key = CONFIG["dev_file"].split('.')[0]  # 'dev_data_sample'
+test_key = CONFIG["test_file"].split('.')[0]  # 'dev_data_sample'
 
 @app.route('/')
 def index():
@@ -93,7 +93,7 @@ def index():
 
 @app.route('/get_stories', methods=['GET'])
 def get_stories():
-    data_path = Path(CONFIG["data_dir"]) / 'transformed' / CONFIG["dev_file"]
+    data_path = Path(CONFIG["data_dir"]) / 'transformed' / CONFIG["test_file"]
     stories = []
     try:
         with open(data_path, 'r') as f:
@@ -105,7 +105,7 @@ def get_stories():
         return jsonify({"error": "Stories file not found"}), 404
 
 def fetch_story_data(story_id):
-    data_path = Path(CONFIG["data_dir"]) / 'transformed' / CONFIG["dev_file"]
+    data_path = Path(CONFIG["data_dir"]) / 'transformed' / CONFIG["test_file"]
     with open(data_path, 'r') as f:
         stories = [json.loads(line) for line in f]
     
@@ -158,7 +158,7 @@ def fetch_story_data(story_id):
     encoder_text = tokenizer.convert_ids_to_tokens(input_ids[0])
     generated_text = tokenizer.convert_ids_to_tokens(generated_ids[0])  # Changed to generated_ids
 
-    return encoder_attentions, decoder_attentions, cross_attentions, encoder_text, generated_text
+    return encoder_attentions, decoder_attentions, cross_attentions, encoder_text, generated_text, story
 
 @app.route('/visualize_attention', methods=['POST'])
 def visualize_attention():
@@ -167,7 +167,7 @@ def visualize_attention():
     if data is None:
         return jsonify({"error": "Story not found"}), 404
     
-    encoder_attentions, decoder_attentions, cross_attentions, encoder_text, generated_text = data
+    encoder_attentions, decoder_attentions, cross_attentions, encoder_text, generated_text, _ = data
 
     # Normalize attention weights
     def normalize_attention(attention):
@@ -209,7 +209,7 @@ def visualize_model_view():
         return jsonify({"error": "Story not found"}), 404
 
     # Unpack the data
-    encoder_attentions, decoder_attentions, cross_attentions, encoder_text, generated_text = data
+    encoder_attentions, decoder_attentions, cross_attentions, encoder_text, generated_text, _ = data
 
     # Check if attentions were captured
     if encoder_attentions is None or decoder_attentions is None or cross_attentions is None:
@@ -255,7 +255,7 @@ def visualize_head_view():
     if data is None:
         return jsonify({"error": "Story not found"}), 404
 
-    encoder_attentions, decoder_attentions, cross_attentions, encoder_text, generated_text = data
+    encoder_attentions, decoder_attentions, cross_attentions, encoder_text, generated_text, _ = data
 
     if encoder_attentions is None or decoder_attentions is None or cross_attentions is None:
         return jsonify({"error": "Attentions were not captured correctly."}), 500
