@@ -76,9 +76,21 @@
         }
         #attention-map {
             width: 100%;
-            height: 600px;
-            overflow: auto;
+            height: auto;
             margin-top: 20px;
+        }
+        #heatmap-image {
+            max-width: 100%;
+            display: block;
+            margin: auto;
+        }
+        #generated-text {
+            flex: 5; /* To ensure it takes up the same width as other text areas */
+            margin-right: 10px;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            background-color: #f7f7f7;
         }
     </style>
 </head>
@@ -114,11 +126,14 @@
             <label for="edited-ending-text">Edited Ending:</label>
             <textarea id="edited-ending-text" readonly></textarea>
         </div>
+        <div class="row">
+            <label for="generated-text">Generated Text:</label>
+            <div id="generated-text" readonly></div>
+        </div>
     </div>
 
-
     <div id="attention-map">
-        <img id="heatmap-image" src="" alt="Attention Heatmap" style="display: none; max-width: 100%;">
+        <img id="heatmap-image" src="" alt="Attention Heatmap">
         <iframe id="bertviz-container" style="display: none; width: 100%; height: 600px; border: none;"></iframe>
     </div>
     
@@ -137,6 +152,7 @@
             const originalEndingText = document.getElementById('original-ending-text');
             const counterfactualText = document.getElementById('counterfactual-text');
             const editedEndingText = document.getElementById('edited-ending-text');
+            const generatedTextDiv = document.getElementById('generated-text');
 
             let stories = [];
             let modelComments = {};
@@ -159,43 +175,36 @@
             });
 
             // Fetch and populate stories
-            axios.get('/get_stories').then(response => {
-                stories = response.data;
-                console.log('Fetched stories:', stories); // Log fetched stories
-                stories.forEach((story, index) => {
-                    const option = document.createElement('option');
-                    option.value = story.story_id;
-                    option.textContent = story.premise;
-                    storySelect.appendChild(option);
-                    if (index === 0) {
-                        option.selected = true;
-                    }
-                });
-
-                // Trigger change event to load details of the first story
-                storySelect.dispatchEvent(new Event('change'));
-            });
-
-            // Load the selected model
             modelSelect.addEventListener('change', () => {
                 const selectedModelKey = modelSelect.value;
-                axios.post('/load_model', { model_key: selectedModelKey })
-                    .then(response => {
-                        modelComments = response.data.comment;
-                        console.log('Model loaded:', modelComments); // Log loaded model comment
+                axios.post('/get_stories', { model_key: selectedModelKey }).then(response => {
+                    stories = response.data;
+                    storySelect.innerHTML = ''; // Clear previous options
+                    stories.forEach((story, index) => {
+                        const option = document.createElement('option');
+                        option.value = index;
+                        option.textContent = story.Premise;
+                        storySelect.appendChild(option);
+                        if (index === 0) {
+                            option.selected = true;
+                        }
                     });
+
+                    // Trigger change event to load details of the first story
+                    storySelect.dispatchEvent(new Event('change'));
+                });
             });
 
             // Display story details on premise selection
             storySelect.addEventListener('change', () => {
-                const selectedStoryId = storySelect.value;
-                const story = stories.find(story => story.story_id === selectedStoryId);
-                console.log('Selected story:', story); // Log selected story
+                const selectedStoryIndex = storySelect.value;
+                const story = stories[selectedStoryIndex];
                 if (story) {
-                    initialText.value = story.initial;
-                    originalEndingText.value = story.original_ending;
-                    counterfactualText.value = story.counterfactual;
-                    editedEndingText.value = story.edited_ending;
+                    initialText.value = story.Initial;
+                    originalEndingText.value = story['Original Ending'];
+                    counterfactualText.value = story.Counterfactual;
+                    editedEndingText.value = story['Edited Ending'];
+                    generatedTextDiv.textContent = story['Generated Text']; // Display the generated text
                     storyDetails.style.display = 'block';
                 } else {
                     storyDetails.style.display = 'none';
@@ -204,11 +213,11 @@
 
             // Visualize heatmap on button click
             heatmapButton.addEventListener('click', () => {
-                const selectedStoryId = storySelect.value;
-                axios.post('/visualize_attention', { story_id: selectedStoryId }, { responseType: 'blob' })
+                const selectedStoryIndex = storySelect.value;
+                axios.post('/visualize_attention', { story_index: selectedStoryIndex })
                     .then(response => {
-                        const url = URL.createObjectURL(response.data);
-                        heatmapImage.src = url;
+                        const imagePath = response.data.image_path;
+                        heatmapImage.src = `/images/${imagePath.split('/').pop()}`;
                         heatmapImage.style.display = 'block';
                         bertvizContainer.style.display = 'none';
                     });
@@ -216,8 +225,8 @@
 
             // Visualize model view on button click
             modelViewButton.addEventListener('click', () => {
-                const selectedStoryId = storySelect.value;
-                axios.post('/visualize_model_view', { story_id: selectedStoryId })
+                const selectedStoryIndex = storySelect.value;
+                axios.post('/visualize_model_view', { story_index: selectedStoryIndex })
                     .then(response => {
                         heatmapImage.style.display = 'none';
                         bertvizContainer.src = '/model_view';
@@ -227,8 +236,8 @@
 
             // Visualize head view on button click
             headViewButton.addEventListener('click', () => {
-                const selectedStoryId = storySelect.value;
-                axios.post('/visualize_head_view', { story_id: selectedStoryId })
+                const selectedStoryIndex = storySelect.value;
+                axios.post('/visualize_head_view', { story_index: selectedStoryIndex })
                     .then(response => {
                         heatmapImage.style.display = 'none';
                         bertvizContainer.src = '/head_view';
