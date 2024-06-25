@@ -103,14 +103,18 @@ def generate_attentions(model, tokenizer, model_dir):
 
         # Save attention tensors
         for i, encoder_attention in enumerate(encoder_attentions):
-            np.save(attention_data_path / f'encoder_attentions_layer_{i}.npy', encoder_attention.detach().cpu().numpy())
+            torch.save(encoder_attention.detach().cpu(), attention_data_path / f'encoder_attentions_layer_{i}.pt')
         for i, decoder_attention in enumerate(decoder_attentions):
-            np.save(attention_data_path / f'decoder_attentions_layer_{i}.npy', decoder_attention.detach().cpu().numpy())
+            torch.save(decoder_attention.detach().cpu(), attention_data_path / f'decoder_attentions_layer_{i}.pt')
         for i, cross_attention in enumerate(cross_attentions):
-            np.save(attention_data_path / f'cross_attentions_layer_{i}.npy', cross_attention.detach().cpu().numpy())
+            torch.save(cross_attention.detach().cpu(), attention_data_path / f'cross_attentions_layer_{i}.pt')
 
         # Save tokens to JSON
-        tokens = {'encoder_text': encoder_text, 'generated_text': generated_text, 'generated_text_tokens': generated_text_tokens}
+        tokens = {
+            'encoder_text': encoder_text,
+            'generated_text': generated_text,
+            'generated_text_tokens': generated_text_tokens
+        }
         with open(attention_data_path / 'tokens.json', 'w') as f:
             json.dump(tokens, f)
 

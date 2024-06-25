@@ -176,8 +176,7 @@
 
             // Fetch and populate stories
             modelSelect.addEventListener('change', () => {
-                const selectedModelKey = modelSelect.value;
-                axios.post('/get_stories', { model_key: selectedModelKey }).then(response => {
+                axios.post('/get_stories').then(response => {
                     stories = response.data;
                     storySelect.innerHTML = ''; // Clear previous options
                     stories.forEach((story, index) => {
@@ -229,7 +228,7 @@
                 axios.post('/visualize_model_view', { story_index: selectedStoryIndex })
                     .then(response => {
                         heatmapImage.style.display = 'none';
-                        bertvizContainer.src = '/model_view';
+                        bertvizContainer.src = '/visualize_model_view';
                         bertvizContainer.style.display = 'block';
                     });
             });
@@ -240,7 +239,7 @@
                 axios.post('/visualize_head_view', { story_index: selectedStoryIndex })
                     .then(response => {
                         heatmapImage.style.display = 'none';
-                        bertvizContainer.src = '/head_view';
+                        bertvizContainer.src = '/visualize_head_view';
                         bertvizContainer.style.display = 'block';
                     });
             });

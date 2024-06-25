@@ -1,9 +1,10 @@
-from flask import Flask, jsonify, request, render_template, send_file, send_from_directory
+from flask import Flask, jsonify, request, render_template, send_from_directory, make_response
 import pandas as pd
 import matplotlib.pyplot as plt
 import seaborn as sns
 import numpy as np
 import json
+import torch
 from pathlib import Path
 from bertviz import model_view, head_view
 
@@ -27,9 +28,9 @@ def get_attention_data(attention_path, story_id):
     attention_dir = attention_path / str(story_id)
     print(f"Loading attention data from {attention_dir}")
 
-    encoder_attentions = [np.load(attention_dir / f'encoder_attentions_layer_{i}.npy') for i in range(12)]
-    decoder_attentions = [np.load(attention_dir / f'decoder_attentions_layer_{i}.npy') for i in range(12)]
-    cross_attentions = [np.load(attention_dir / f'cross_attentions_layer_{i}.npy') for i in range(12)]
+    encoder_attentions = [torch.load(attention_dir / f'encoder_attentions_layer_{i}.pt') for i in range(12)]
+    decoder_attentions = [torch.load(attention_dir / f'decoder_attentions_layer_{i}.pt') for i in range(12)]
+    cross_attentions = [torch.load(attention_dir / f'cross_attentions_layer_{i}.pt') for i in range(12)]
     
     with open(attention_dir / "tokens.json") as f:
         tokens = json.load(f)
@@ -168,6 +169,87 @@ def visualize_attention():
 @app.route('/images/<path:filename>')
 def serve_image(filename):
     return send_from_directory('/tmp', filename)
+
+@app.route('/visualize_head_view', methods=['POST'])
+def visualize_head_view():
+    story_index = request.json.get('story_index')
+    if story_index is None:
+        return jsonify({"error": "Story index not provided"}), 400
+
+    try:
+        story_index = int(story_index)
+    except ValueError:
+        return jsonify({"error": "Invalid story index"}), 400
+
+    data = load_data()
+    if data is None:
+        return jsonify({"error": "Data not found"}), 404
+    
+    story_id = data.iloc[story_index]["StoryID"]
+    
+    try:
+        encoder_attentions, decoder_attentions, cross_attentions, encoder_text, generated_text, generated_text_tokens = get_attention_data(ATTENTION_PATH, story_id)
+        print(f"Attention data loaded for story index {story_index}")
+        print(f"Generated Text Tokens: {generated_text_tokens}")
+    except Exception as e:
+        print(f"Error loading attention data: {str(e)}")
+        return jsonify({"error": str(e)}), 500
+
+    try:
+        html_content = head_view(
+            cross_attentions,
+            generated_text_tokens,
+            layer=0, heads=list(range(12)), html_action='return'
+        )
+        response = make_response(html_content.data)
+        response.headers['Content-Type'] = 'text/html'
+    except Exception as e:
+        print(f"Error generating head view: {str(e)}")
+        return jsonify({"error": str(e)}), 500
+
+    return response
+
+@app.route('/visualize_model_view', methods=['POST'])
+def visualize_model_view():
+    story_index = request.json.get('story_index')
+    if story_index is None:
+        return jsonify({"error": "Story index not provided"}), 400
+
+    try:
+        story_index = int(story_index)
+    except ValueError:
+        return jsonify({"error": "Invalid story index"}), 400
+
+    data = load_data()
+    if data is None:
+        return jsonify({"error": "Data not found"}), 404
+    
+    story_id = data.iloc[story_index]["StoryID"]
+    
+    try:
+        encoder_attentions, decoder_attentions, cross_attentions, encoder_text, generated_text, generated_text_tokens = get_attention_data(ATTENTION_PATH, story_id)
+        print(f"Attention data loaded for story index {story_index}")
+        print(f"Generated Text Tokens: {generated_text_tokens}")
+    except Exception as e:
+        print(f"Error loading attention data: {str(e)}")
+        return jsonify({"error": str(e)}), 500
+
+    try:
+        html_content = model_view(
+            encoder_attention=encoder_attentions,
+            decoder_attention=decoder_attentions,
+            cross_attention=cross_attentions,
+            encoder_tokens=encoder_text,
+            decoder_tokens=generated_text_tokens,
+            html_action='return'
+        )
+        response = make_response(html_content.data)
+        response.headers['Content-Type'] = 'text/html'
+    except Exception as e:
+        print(f"Error generating model view: {str(e)}")
+        return jsonify({"error": str(e)}), 500
+
+    return response
 
 if __name__ == '__main__':
     app.run(debug=True)
