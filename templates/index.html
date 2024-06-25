@@ -227,8 +227,8 @@
                 const selectedStoryIndex = storySelect.value;
                 axios.post('/visualize_model_view', { story_index: selectedStoryIndex })
                     .then(response => {
+                        bertvizContainer.srcdoc = response.data; // Use srcdoc to directly embed the HTML content
                         heatmapImage.style.display = 'none';
-                        bertvizContainer.src = '/visualize_model_view';
                         bertvizContainer.style.display = 'block';
                     });
             });
@@ -238,8 +238,8 @@
                 const selectedStoryIndex = storySelect.value;
                 axios.post('/visualize_head_view', { story_index: selectedStoryIndex })
                     .then(response => {
+                        bertvizContainer.srcdoc = response.data; // Use srcdoc to directly embed the HTML content
                         heatmapImage.style.display = 'none';
-                        bertvizContainer.src = '/visualize_head_view';
                         bertvizContainer.style.display = 'block';
                     });
             });
