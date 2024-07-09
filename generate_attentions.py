@@ -1,12 +1,12 @@
-import os
+import os  # Import the os module
 import torch
 import json
 import numpy as np
 import pandas as pd
 from transformers import T5Tokenizer
 from pathlib import Path
-from src.models.model_T5 import FlanT5FineTuner
-from src.utils.config import CONFIG
+from src.models.model_T5 import FlanT5FineTuner  # Ensure this is the correct import path
+from src.utils.config import CONFIG  # Ensure this is the correct import path
 
 # Define the model mapping
 MODEL_MAPPING = {
@@ -15,14 +15,38 @@ MODEL_MAPPING = {
         "model_dir": "/data/agirard/Projects/Timetravel/models/model_2024-03-22-10",
         "comment": "T5-base weight 1-1"
     },
-    # Add other models as needed
+    "T5-base weight 12-1": {
+        "checkpoint_path": "models/model_2024-04-09-11/checkpoint-epoch=04-val_loss=0.95.ckpt",
+        "model_dir": "/data/agirard/Projects/Timetravel/models/model_2024-04-09-11",
+        "comment": "T5-base weight 12-1"
+    },
+    "T5-base weight 13-1": {
+        "checkpoint_path": "models/model_2024-04-09-22/checkpoint-epoch=04-val_loss=0.95.ckpt",
+        "model_dir": "/data/agirard/Projects/Timetravel/models/model_2024-04-09-22",
+        "comment": "T5-base weight 13-1"
+    },
+    "T5-base weight 20-1": {
+        "checkpoint_path": "models/model_2024-04-08-13/checkpoint-epoch=05-val_loss=1.02.ckpt",
+        "model_dir": "/data/agirard/Projects/Timetravel/models/model_2024-04-08-13",
+        "comment": "T5-base weight 20-1"
+    }
 }
 
 # Path to the tokenizer directory
 tokenizer_dir = "/data/agirard/Projects/Timetravel/models/Tokenizers"
 
-# Function to load the model and tokenizer
 def load_model_and_tokenizer(model_key):
+    """
+    Load the model and tokenizer based on the provided model key.
+    
+    Args:
+        model_key (str): The key corresponding to the model in the MODEL_MAPPING.
+
+    Returns:
+        model: The loaded model.
+        tokenizer: The loaded tokenizer.
+        model_dir (str): The directory where the model is stored.
+    """
     # Retrieve model information from the mapping
     model_info = MODEL_MAPPING[model_key]
     checkpoint_path = model_info["checkpoint_path"]
@@ -40,8 +64,15 @@ def load_model_and_tokenizer(model_key):
     
     return model, tokenizer, model_dir
 
-# Function to generate attentions
 def generate_attentions(model, tokenizer, model_dir):
+    """
+    Generate and save attention data for each story in the test set.
+    
+    Args:
+        model: The model used for generating attentions.
+        tokenizer: The tokenizer used for encoding inputs.
+        model_dir (str): The directory where the model is stored.
+    """
     # Define the path to the test data
     data_path = Path(CONFIG["data_dir"]) / 'transformed' / CONFIG["test_file"]
     
@@ -58,8 +89,8 @@ def generate_attentions(model, tokenizer, model_dir):
         
         # Construct the input sequence for the model
         input_sequence = (
-            f"{story['premise']}"
-            f"{story['initial']}"
+            f"{story['premise']} "
+            f"{story['initial']} "
             f"{story['original_ending']} </s> "
             f"{story['premise']} {story['counterfactual']}"
         )
@@ -101,13 +132,13 @@ def generate_attentions(model, tokenizer, model_dir):
         attention_data_path = Path(model_dir) / 'attentions' / str(story_id)
         attention_data_path.mkdir(parents=True, exist_ok=True)
 
-        # Save attention tensors
+        # Save attention tensors as NumPy arrays
         for i, encoder_attention in enumerate(encoder_attentions):
-            torch.save(encoder_attention.detach().cpu(), attention_data_path / f'encoder_attentions_layer_{i}.pt')
+            np.save(attention_data_path / f'encoder_attentions_layer_{i}.npy', encoder_attention.detach().cpu().numpy())
         for i, decoder_attention in enumerate(decoder_attentions):
-            torch.save(decoder_attention.detach().cpu(), attention_data_path / f'decoder_attentions_layer_{i}.pt')
+            np.save(attention_data_path / f'decoder_attentions_layer_{i}.npy', decoder_attention.detach().cpu().numpy())
         for i, cross_attention in enumerate(cross_attentions):
-            torch.save(cross_attention.detach().cpu(), attention_data_path / f'cross_attentions_layer_{i}.pt')
+            np.save(attention_data_path / f'cross_attentions_layer_{i}.npy', cross_attention.detach().cpu().numpy())
 
         # Save tokens to JSON
         tokens = {
@@ -147,7 +178,11 @@ if __name__ == "__main__":
 
     # Process each model in the model mapping
     for model_key in MODEL_MAPPING:
-        model, tokenizer, model_dir = load_model_and_tokenizer(model_key)
-        model = model.to(device)
-        generate_attentions(model, tokenizer, model_dir)
-        print(f"Generated attentions for model {model_key}")
+        try:
+            print(f"Processing model: {model_key}")
+            model, tokenizer, model_dir = load_model_and_tokenizer(model_key)
+            model = model.to(device)
+            generate_attentions(model, tokenizer, model_dir)
+            print(f"Generated attentions for model {model_key}")
+        except Exception as e:
+            print(f"Failed to process model {model_key}: {e}")
