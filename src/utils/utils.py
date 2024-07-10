@@ -6,6 +6,7 @@ import openai
 import pandas as pd
 import torch
 import torch.nn.utils.rnn
+import uuid  # Add this import statement
 from src.utils.config import CONFIG
 
 logger = logging.getLogger(__name__)
@@ -153,6 +154,7 @@ def collate_fn(batch, pad_token_id=0,attention_pad_value=0):
         'edited_ending': edited_ending,
     }
 
+
 def chatgpt_zero_shot_inference(api_key, test_data):
     """
     Perform zero-shot inference using the OpenAI GPT model.
@@ -189,23 +191,24 @@ def chatgpt_zero_shot_inference(api_key, test_data):
                     {"role": "system", "content": "You are a helpful assistant."},
                     {"role": "user", "content": prompt}
                 ],
-                #max_tokens=CONFIG["max_gen_length"]  # Use max_gen_length from the config
                 max_tokens=50
             )
             generated_text = response['choices'][0]['message']['content'].strip()
             print(f"Generated text for row {idx}: {generated_text}")
 
             results.append({
+                'story_id': row.get('story_id', str(uuid.uuid4())),  # Generate a UUID if story_id is not present
                 'premise': row['premise'],
                 'initial': row['initial'],
                 'counterfactual': row['counterfactual'],
                 'original_ending': row['original_ending'],
-                'Adapted Ending': generated_text  # Change key to "Adapted Ending"
+                'generated_text': generated_text
             })
         except Exception as e:
             print(f"API call failed for row {idx} with error: {e}")
 
     return results
+
 
 def chatgpt_one_shot_inference(api_key, test_data, example_selection):
     """
@@ -259,18 +262,24 @@ def chatgpt_one_shot_inference(api_key, test_data, example_selection):
                     {"role": "system", "content": "You are a helpful assistant."},
                     {"role": "user", "content": prompt}
                 ],
-                #max_tokens=CONFIG["max_gen_length"]  # Use max_gen_length from the config
-                max_tokens=50
+                max_tokens=50  # Use max_gen_length from the config if necessary
             )
             generated_text = response['choices'][0]['message']['content'].strip()
+
+            # Remove "Adapted ending:" prefix if present
+            if generated_text.lower().startswith("adapted ending:"):
+                generated_text = generated_text[len("adapted ending:"):].strip()
+
             print(f"Generated text for row {idx}: {generated_text}")
 
             results.append({
+                'story_id': row['story_id'],
                 'premise': row['premise'],
                 'initial': row['initial'],
                 'counterfactual': row['counterfactual'],
                 'original_ending': row['original_ending'],
-                'Adapted Ending': generated_text  # Change key to "Adapted Ending"
+                'edited_ending': row['edited_ending'],
+                'generated_text': generated_text  # Change key to "generated_text"
             })
         except Exception as e:
             print(f"API call failed for row {idx} with error: {e}")

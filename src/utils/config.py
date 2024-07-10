@@ -15,7 +15,7 @@ CONFIG = {
     "models_dir": ROOT_DIR / "models",
     "logs_dir": ROOT_DIR / "logs",
     "bart_score_dir": BARTSCORE_DIR,
-    "results_dir": ROOT_DIR / "results",  # Directory to save inference results
+    "results_dir": ROOT_DIR / "results",  # Directory to save GPT inference results
     
     # File names
     #"train_file": "train_supervised_small.json",
@@ -54,6 +54,11 @@ CONFIG = {
 
     # BARTScorer settings
     "bart_scorer_checkpoint": "facebook/bart-large-cnn",
+
+    # GPT Inference and evaluation settings
+    "inference_mode": "zero_shot",  # Options: zero_shot, one_shot
+    "run_similarities_only": False,  # If True, only run similarities
+    "example_selection": "random"  # or "random" - Example selection for one_shot mode
 
 }
 
