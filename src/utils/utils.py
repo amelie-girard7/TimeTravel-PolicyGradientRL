@@ -154,7 +154,6 @@ def collate_fn(batch, pad_token_id=0,attention_pad_value=0):
         'edited_ending': edited_ending,
     }
 
-
 def chatgpt_zero_shot_inference(api_key, test_data):
     """
     Perform zero-shot inference using the OpenAI GPT model.
@@ -208,7 +207,6 @@ def chatgpt_zero_shot_inference(api_key, test_data):
             print(f"API call failed for row {idx} with error: {e}")
 
     return results
-
 
 def chatgpt_one_shot_inference(api_key, test_data, example_selection):
     """
