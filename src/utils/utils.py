@@ -134,11 +134,11 @@ def collate_fn(batch, pad_token_id=0,attention_pad_value=0):
     # differential_weights_tensors = [torch.tensor(dw, dtype=torch.float) for dw in differential_weights]
     differential_weights_padded = torch.nn.utils.rnn.pad_sequence(differential_weights_tensors, batch_first=True, padding_value=1)
 
-     # Debug prints
-    print(f"input_ids_padded shape: {input_ids_padded.shape}")
-    print(f"attention_masks_padded shape: {attention_masks_padded.shape}")
-    print(f"labels_padded shape: {labels_padded.shape}")
-    print(f"differential_weights_padded shape: {differential_weights_padded.shape}")
+    # Debug prints
+    #print(f"input_ids_padded shape: {input_ids_padded.shape}")
+    #print(f"attention_masks_padded shape: {attention_masks_padded.shape}")
+    #print(f"labels_padded shape: {labels_padded.shape}")
+    #print(f"differential_weights_padded shape: {differential_weights_padded.shape}")
 
 
     # Return the padded tensors along with the additional fields for evaluation.
@@ -181,7 +181,7 @@ def chatgpt_zero_shot_inference(api_key, test_data):
             "Now, generate the adapted ending:"
         )
 
-        print(f"Prompt for row {idx}: {prompt}")
+        #print(f"Prompt for row {idx}: {prompt}")
 
         try:
             response = openai.ChatCompletion.create(
@@ -193,7 +193,7 @@ def chatgpt_zero_shot_inference(api_key, test_data):
                 max_tokens=50
             )
             generated_text = response['choices'][0]['message']['content'].strip()
-            print(f"Generated text for row {idx}: {generated_text}")
+            #print(f"Generated text for row {idx}: {generated_text}")
 
             results.append({
                 'story_id': row.get('story_id', str(uuid.uuid4())),  # Generate a UUID if story_id is not present
@@ -251,7 +251,7 @@ def chatgpt_one_shot_inference(api_key, test_data, example_selection):
             "Now, generate the adapted ending:"
         )
 
-        print(f"Prompt for row {idx}: {prompt}")
+        #print(f"Prompt for row {idx}: {prompt}")
 
         try:
             response = openai.ChatCompletion.create(
@@ -268,7 +268,7 @@ def chatgpt_one_shot_inference(api_key, test_data, example_selection):
             if generated_text.lower().startswith("adapted ending:"):
                 generated_text = generated_text[len("adapted ending:"):].strip()
 
-            print(f"Generated text for row {idx}: {generated_text}")
+            #print(f"Generated text for row {idx}: {generated_text}")
 
             results.append({
                 'story_id': row['story_id'],

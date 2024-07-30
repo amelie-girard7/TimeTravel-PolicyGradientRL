@@ -231,7 +231,6 @@ class FlanT5FineTuner(pl.LightningModule):
         # Return generated texts 
         return generated_texts
 
-
     def on_validation_epoch_end(self, test_flag=False):
         """
         Handles operations to perform at the end of each validation epoch.

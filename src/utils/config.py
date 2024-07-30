@@ -20,7 +20,7 @@ CONFIG = {
     # File names
     #"train_file": "train_supervised_small.json",
     #"dev_file": "dev_data.json",
-    #"test_file": "test_data.json",
+    #"test_file": "gold_data.json",
 
     "train_file": "train_supervised_small_sample.json",
     "dev_file": "dev_data_sample.json",
@@ -29,9 +29,9 @@ CONFIG = {
     # Model and training configurations
     "model_name": os.getenv('MODEL_NAME', "google/flan-t5-base"),
     #"model_name": os.getenv('MODEL_NAME', "google/flan-t5-large"),
-    "batch_size": int(os.getenv('BATCH_SIZE', 1)),
+    "batch_size": int(os.getenv('BATCH_SIZE', 4)),
     "num_workers": int(os.getenv('NUM_WORKERS', 3)),
-    "max_epochs": int(os.getenv('MAX_EPOCHS', 1)),
+    "max_epochs": int(os.getenv('MAX_EPOCHS', 6)),
     "learning_rate": float(os.getenv('LEARNING_RATE', 2e-5)),
     "use_custom_loss": True,  # True if you want to use custom loss function
     "output_attentions": True,  # Enable/disable attention outputs

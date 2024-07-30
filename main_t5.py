@@ -77,9 +77,12 @@ def setup_trainer(model_dir):
             max_epochs=CONFIG["max_epochs"],
             accelerator='gpu' if torch.cuda.is_available() else None,
             devices='auto' if torch.cuda.is_available() else None,
+            #devices=2 if torch.cuda.is_available() else None,  # Use 2 GPUs
+            #strategy='ddp',  # Use Distributed Data Parallel strategy for multi-GPU
             callbacks=[checkpoint_callback],
             logger=tensorboard_logger,
             #num_sanity_val_steps=0
+            #accumulate_grad_batches=2,  # Adjust this based on your memory constraints
         )
     return trainer
 
@@ -89,6 +92,10 @@ def main():
     """
     # Set the specific GPU to use
     os.environ['CUDA_VISIBLE_DEVICES'] = '0'  # Adjust the index to select a different GPU
+
+    # Allow the code to use multiple GPUs
+    #os.environ['CUDA_VISIBLE_DEVICES'] = '0,1'  # Adjust the indices to include both GPUs
+
 
     # Set Tensor Core precision policy for better performance on Tensor Cores
     torch.set_float32_matmul_precision('high')
