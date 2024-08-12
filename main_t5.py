@@ -76,9 +76,9 @@ def setup_trainer(model_dir):
     trainer = Trainer(
             max_epochs=CONFIG["max_epochs"],
             accelerator='gpu' if torch.cuda.is_available() else None,
-            devices='auto' if torch.cuda.is_available() else None,
-            #devices=2 if torch.cuda.is_available() else None,  # Use 2 GPUs
-            #strategy='ddp',  # Use Distributed Data Parallel strategy for multi-GPU
+            #devices='auto' if torch.cuda.is_available() else None,
+            devices=2 if torch.cuda.is_available() else None,  # Use 2 GPUs
+            strategy='ddp',  # Use Distributed Data Parallel strategy for multi-GPU
             callbacks=[checkpoint_callback],
             logger=tensorboard_logger,
             #num_sanity_val_steps=0
@@ -90,11 +90,9 @@ def main():
     """
     Main function orchestrating the model training and evaluation process.
     """
-    # Set the specific GPU to use
-    os.environ['CUDA_VISIBLE_DEVICES'] = '0'  # Adjust the index to select a different GPU
-
-    # Allow the code to use multiple GPUs
-    #os.environ['CUDA_VISIBLE_DEVICES'] = '0,1'  # Adjust the indices to include both GPUs
+    # Set the GPU manually
+    # os.environ['CUDA_VISIBLE_DEVICES'] = '0' 
+    #os.environ['CUDA_VISIBLE_DEVICES'] = '0,1' #both GPUs
 
 
     # Set Tensor Core precision policy for better performance on Tensor Cores
