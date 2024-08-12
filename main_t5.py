@@ -91,12 +91,11 @@ def main():
     Main function orchestrating the model training and evaluation process.
     """
     # Set the GPU manually
-    # os.environ['CUDA_VISIBLE_DEVICES'] = '0' 
-    #os.environ['CUDA_VISIBLE_DEVICES'] = '0,1' #both GPUs
+    os.environ['CUDA_VISIBLE_DEVICES'] = '0,1' # Make both GPUs available
 
 
     # Set Tensor Core precision policy for better performance on Tensor Cores
-    torch.set_float32_matmul_precision('high')
+    # torch.set_float32_matmul_precision('high')
 
     try:
         # Timestamp for unique directory creation
