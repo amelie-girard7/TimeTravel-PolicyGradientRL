@@ -1,143 +1,133 @@
-# Evaluation Metrics for Counterfactual Story Re-writing
+# Training Objectives and Evaluation Metrics for Counterfactual Story Rewriting
 
 This repository contains the dataset and code accompanying the paper:
 
-**"Title of Your Paper"**  
-*Authors: Amelie Girard, Author2, Author3*  
+**Training Objectives and Evaluation Metrics for Counterfactual Story Rewriting**  
+*Authors: Amelie Girard, Inigo Jauregi, Massimo Piccardi*  
 
 Link to paper: [paper link](#)
+
+## Table of Contents
+- [Task Overview](#task-overview)
+- [Story Components](#story-components)
+- [Training Objective: Differential Token Weighting (DTW)](#training-objective-differential-token-weighting-dtw)
+- [Custom Loss Function](#custom-loss-function)
+- [Dataset](#dataset)
+- [Evaluation Metrics](#evaluation-metrics)
+- [Repository Structure](#repository-structure)
+- [Usage](#usage)
+- [Installation](#installation)
+- [Contributing](#contributing)
+- [License](#license)
+
+## Task Overview
+The task involves rewriting the endings of stories when a counterfactual event is introduced. The model is trained to recognize and emphasize the differences between the original and edited story endings, making the new endings fit logically with the hypothetical scenario.
+
+## Story Components
+Each story consists of the following structured components:
+
+- **Premise (𝑋𝑃):** Sets the foundational scenario or context for the story.
+- **Initial Event (𝑋𝐼𝐸):** Introduces an event that leads to the original story's conclusion.
+- **Original Ending (𝑋𝑂𝐸):** The original conclusion of the story.
+- **Counterfactual Event (𝑋𝐶𝐸):** A divergent hypothetical event that alters the course of the story.
+
+## Training Objective: Differential Token Weighting (DTW)
+The conventional training approach treats all words equally. However, our task requires the model to focus more on the differences between the original and edited endings. We achieve this through Differential Token Weighting (DTW), where higher weights are assigned to tokens that differ between the original and edited endings.
+
+### Tools Used
+- **spaCy:** For semantic similarity checks to detect contextually similar or different terms.
+- **NLTK:** For synonym checks using WordNet to capture subtle variations.
+
+## Custom Loss Function
+We implemented a custom loss function that incorporates the differential weights, ensuring that the model learns to emphasize critical differences between the original and edited endings.
+
+## Dataset
+The **TimeTravel dataset** is used for training and evaluation. This dataset contains structured stories with both original and edited endings:
+
+- **Training Set:** 16,752 stories
+- **Validation Set:** 1,871 stories
+- **Test Set:** 1,871 stories
+- **Gold Standard Set:** 604 manually curated stories for high-quality evaluation
+
+## Evaluation Metrics
+To assess the performance of the model, we use the following metrics:
+
+- **BARTScore**
+- **ROUGE-L**
+- **BERTScore**
+- **SacreBLEU**
+- **Counterfactual Rewriting Metrics** (custom metric)
+
+These metrics help evaluate the coherence, relevance, and adaptability of the generated counterfactual story endings.
 
 
 ## Repository Structure
 
-The repository is structured as follows:
+The project is organized into the following structure:
 
-```
+```plaintext
 TIMETRAVEL/
-│
-├── README.md            # Project overview and instructions
-├── LICENSE              # License information
-├── .gitignore           # Files and folders to be ignored by git
-│
-├── src/                 # Source code for the project
-│   ├── main.py          # Main script to run the models
-│   ├── models/          # Model definitions
-│   │   └── model_T5.py  # T5 model for story rewriting
-│   ├── utils/           # Utility scripts and functions
-│   │   └── utils.py     # Helper functions
-│   └── data_loader.py   # Data loading and preprocessing scripts
-│
-├── data/                # Data directory
-│   ├── raw/             # Raw data, unprocessed
-│   ├── processed/       # Processed data ready for model input
-│   └── external/        # Any external data sources
-│
-├── notebooks/           # Jupyter notebooks for experiments and analysis
-│   └── exploration.ipynb
-│
-├── requirements.txt     # Project dependencies
-│
-├── tests/               # Test scripts
-│   └── test_model_T5.py # Test for T5 model
-│
-├── scripts/             # Utility scripts, e.g., setup or installation scripts
-│   └── setup.sh
-│
-├── models/              # Trained model files
-│   └── model_T5.pkl
-│
-└── docs/                # Documentation files
-    └── model_T5.md      # Documentation specific to T5 model
+├── bertviz/                 # Customized BERTviz for visualizing attention in Transformer models.
+├── data/                    # Directory for storing dataset files.
+├── models/                  # Directory for storing trained models or model-related files.
+└── src/                     # Main source code directory.
+    ├── BARTScore_metric/    # Contains the implementation of the BARTScore metric.
+    │   ├── models/          # Model-related scripts, including model_T5.py for T5 model implementation.
+    │   └── utils/           # Utility scripts including configuration, metrics, and helper functions.
+    ├── __init__.py          # Initialization file for the src module.
+    ├── data_loader.py       # Script for loading and preprocessing data.
+    ├── .gitignore           # Git ignore file specifying files and directories to ignore.
+    ├── generate_attentions.py  # Script to generate attention visualizations.
+    ├── LICENSE              # License file for the project.
+    ├── main_gpt.py          # Main script to run the GPT model.
+    ├── main_t5.py           # Main script to run the T5 model.
+    ├── README.md            # This README file.
+    ├── requirements.txt     # List of dependencies required for the project.
+    └── vis_attention_T5.ipynb  # Jupyter notebook for visualizing attention in the T5 model.
 ```
 
-## Dataset: TimeTravel
+## Usage
 
-The TimeTravel dataset is curated to facilitate the training and evaluation of models on the task of counterfactual story rewriting. It contains stories along with their original and counterfactually altered endings [cite the orginal paper].
+### Training the Model
+To train the model, ensure that the TimeTravel dataset is properly set up. The model can be trained using the provided scripts, with options to adjust the hyperparameters, including the differential weights.
 
-- `train_supervised_small.json`: Supervised training set with human-annotated rewritten endings (28,363 examples).
-- `train_supervised_large.json`: A larger version of the supervised training set (16,752 examples).
-- `dev_data.json`: Development set (1,871 examples).
-- `test_data.json`: Test set (1,871 examples).
+### Evaluating the Model
+The evaluation scripts allow you to assess the model's performance using the metrics mentioned above. Multiple edited endings are evaluated against the counterfactual scenarios to ensure robust performance.
 
-The dataset can be **downloaded** from [here](https://drive.google.com/file/d/150jP5FEHqJD3TmTO_8VGdgqBftTDKn4w/view?usp=sharing).
+## Installation
+To get started with the project, clone the repository and install the necessary dependencies:
 
-### Data Example
+```bash
+git clone https://github.com/yourusername/counterfactual-story-rewriting.git
+cd counterfactual-story-rewriting
+pip install -r requirements.txt
 
-The dataset includes stories. Here's how this looks in the dataset:
-
-```json
-{
-  "story_id": "4fd7d150-b080-4fb1-a592-8c27fa6e1fc8",
-  "premise": "Andrea wanted a picture of her jumping.",
-  "initial": "She set the camera up.",
-  "counterfactual": "She asked her friend to draw one.",
-  "original_ending": "Then, she jumped in the air. The picture kept coming out wrong. It took twenty tries to get it right.",
-  "edited_ending": [
-    "Then, she jumped in the air to demonstrate how she wanted it to look.",
-    "The picture kept coming out wrong.",
-    "It took drawing it several times to get it right."
-  ]
-}
 ```
 
-## Solution Architecture
+## Contributing
 
-The project is a structured Python application primarily dealing with data processing, model training, and prediction using a pre-trained Flan-T5 model. This is a breakdown of the functionality of each file and data flow:
+We welcome contributions from the community to improve this project. If you'd like to contribute, please follow these steps:
 
-### `src/main.py`
-The main executable script for the project:
+1. **Fork the repository.**  
+   This creates a copy of the project under your GitHub account.
 
-- Orchestrates the process by setting up the model, data loaders, and the trainer.
-- Initializes the `FlanT5FineTuner` and prepares the data loaders for training, validation, and testing datasets.
-- Sets up a PyTorch Lightning `Trainer` to manage the training process, including checkpointing and logging.
-- Handles the execution of the training process and, optionally, testing and validation.
+2. **Create a new branch for your feature or bugfix.**  
+   Use a descriptive name for your branch (e.g., `feature/add-new-metric` or `bugfix/fix-token-weighting`).
 
-![Detailed project structure](./images/structure-1.png)
-*Diagram showing the detailed structure of the project, including various components and their interactions.*
+3. **Make your changes.**  
+   Implement your feature or bugfix, and ensure your code is well-documented and tested.
 
-### `src/models/model_T5.py`
-Defines the model and training procedures:
-The core of this project is evaluating the causal reasoning of pre-trained language models, such as Flan-T5, for the task of counterfactual story rewriting and comparing it to GPT. The model is trained to minimize the log-likelihood of generating the actual rewritten endings based on the given story context and a counterfactual premise.
+4. **Submit a pull request.**  
+   Go to the repository's GitHub page and open a pull request. Provide a clear and detailed description of your changes, why they were necessary, and any relevant context.
 
-- **FlanT5FineTuner**: A class that wraps around the T5 model for fine-tuning on the story rewriting task. It includes methods for the forward pass, training, validation, and testing steps. It also includes methods for generating text (`generate_text`) and calculating custom metrics (`_calculate_metrics`).
+### Reporting Issues
 
-### `src/utils/utils.py`
-This file contains utility functions to handle data preprocessing and loading.
+If you encounter any issues or bugs, please open an issue in the repository. When reporting issues, include as much detail as possible to help us address the problem quickly:
 
-![Project structure overview](./images/structure.png)
-*Diagram showing the high-level structure of the project.*
+- Describe the problem and how to reproduce it.
+- Provide any relevant error messages or screenshots.
+- Mention the environment you're using (e.g., operating system, Python version).
 
-- **`count_json_lines(file_path)`**: Counts lines in a JSON file used for data validation or insight.
-- **`load_first_line_from_json(file_path)`**: Loads the first line from a JSON file, which could be used for testing or data inspection.
-- **`preprocess_data(row, tokenizer)`**: Processes each row of data, extracting necessary fields and constructing input-output sequences for model training or inference.
-    - **Input**: Combines the `premise`, `initial`, `original_ending`, and `counterfactual` into a single input sequence.
-    - **Output**: Tokenizes the `edited_ending` for model training.
-- **`calculate_differential_weights(tokenized_labels, tokenizer, differences, high_weight=20, base_weight=1)`**: Calculates differential weights for tokenized labels based on differences.
-- **`collate_fn(batch, pad_token_id=0, attention_pad_value=0)`**: Prepares batches of data by tokenizing and structuring them in a format that the model expects.
+## License
 
-### `src/data_loader.py`
-Handles data loading:
-
-- **CustomJSONDataset**: A PyTorch `Dataset` class that reads data from a JSON file and preprocesses it using `preprocess_data` from `utils.py`.
-- **`create_dataloaders(data_path, tokenizer, batch_size, num_workers)`**: Creates PyTorch `DataLoader` objects for batching and efficient data loading during model training or inference.
-
-### Data Reading & Preprocessing
-- Data is read from JSON files using the `CustomJSONDataset` class.
-- Data is preprocessed per row using `preprocess_data` which constructs input-output sequences needed by the model.
-
-### Data Batching & Tokenization
-- `DataLoader` objects are created for batching.
-- Batches of data are tokenized and structured properly by `collate_fn` during the data loading process.
-
-### Model Training & Validation
-- `FlanT5FineTuner` handles the model training, validation, and testing.
-- It uses the batches prepared by `DataLoader` and performs forward passes, loss calculation, and backpropagation.
-- It also generates text and calculates custom metrics like BLEU and ROUGE scores.
-
-### Checkpointing & Logging
-- Model checkpoints and logs are managed by PyTorch Lightning's `Trainer`, saving the state of the model and logging metrics for monitoring.
-
-### Execution Control
-- `main.py` orchestrates the whole process, ensuring that the model, data, and training utilities are correctly set up and executed.
-
-
+This project is licensed under the MIT License. You are free to use, modify, and distribute this software under the terms of the license. See the [LICENSE](LICENSE) file for details.

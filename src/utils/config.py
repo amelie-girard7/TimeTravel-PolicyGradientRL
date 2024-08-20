@@ -1,5 +1,4 @@
-#src/utils/config.py
-
+# /data/agirard/Projects/Timetravel/src/utils/config.py
 import os
 from pathlib import Path
 
@@ -15,7 +14,7 @@ CONFIG = {
     "models_dir": ROOT_DIR / "models",
     "logs_dir": ROOT_DIR / "logs",
     "bart_score_dir": BARTSCORE_DIR,
-    "results_dir": ROOT_DIR / "results",  # Directory to save GPT inference results
+    "results_dir": ROOT_DIR / "results",  # Directory to save the results
     
     # File names
     #"train_file": "train_supervised_small.json",
@@ -29,36 +28,37 @@ CONFIG = {
     # Model and training configurations
     "model_name": os.getenv('MODEL_NAME', "google/flan-t5-base"),
     #"model_name": os.getenv('MODEL_NAME', "google/flan-t5-large"),
-    "batch_size": int(os.getenv('BATCH_SIZE', 4)),
+    "batch_size": int(os.getenv('BATCH_SIZE', 1)),
     "num_workers": int(os.getenv('NUM_WORKERS', 3)),
-    "max_epochs": int(os.getenv('MAX_EPOCHS', 6)),
+    "max_epochs": int(os.getenv('MAX_EPOCHS', 3)),
     "learning_rate": float(os.getenv('LEARNING_RATE', 2e-5)),
     "use_custom_loss": True,  # True if you want to use custom loss function
-    "output_attentions": True,  # Enable/disable attention outputs
-    "log_attentions": True, # True if you want to log the attention
+    "output_attentions": False,  # Enable/disable attention outputs
+    "log_attentions": False, # True if you want to log the attention
     
     # preprocess data parameters
     "max_length": 512,
 
     # Text generation parameters
     "max_gen_length": 250,
-   
 
     # Evaluation metrics settings
-    "eval_batch_size": 4,
+    "eval_batch_size": 1,
     
     # BERTScorer settings
+    "use_bert": True,  # Add this to control BERT usage
     "bert_scorer_model_type": "microsoft/deberta-xlarge-mnli",
     "scorer_device": "cuda:0",
-    "bert_scorer_batch_size": 4,
+    "bert_scorer_batch_size": 1,
 
     # BARTScorer settings
+    "use_bart": True,  # Add this to control BART usage
     "bart_scorer_checkpoint": "facebook/bart-large-cnn",
 
     # GPT Inference and evaluation settings
-    "inference_mode": "zero_shot",  # Options: zero_shot, one_shot
-    "run_similarities_only": False,  # If True, only run similarities
-    "example_selection": "random"  # or "random" - Example selection for one_shot mode
+    "inference_mode": "one_shot",  # Options: zero_shot, one_shot
+    "run_similarities_only": True,  # If True, only run similarities
+    "example_selection": "random"  # "fixed" or "random" - Example selection for one_shot mode
 
 }
 
@@ -67,4 +67,4 @@ for path_key in ['data_dir', 'models_dir', 'logs_dir', 'results_dir']:
     path = CONFIG[path_key]
     if not path.exists():
         print(f"Creating directory: {path}")
-        path.mkdir(parents=True, exist_ok=True) 
+        path.mkdir(parents=True, exist_ok=True)

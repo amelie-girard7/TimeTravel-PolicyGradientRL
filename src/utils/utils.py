@@ -1,5 +1,5 @@
 # src/utils/utils.py
-
+import time
 import json
 import logging
 import openai
@@ -37,7 +37,7 @@ def load_first_line_from_json(file_path):
         logger.error(f"Error reading from {file_path}: {e}")
         raise IOError(f"Error reading from {file_path}: {e}")
 
-def calculate_differential_weights(tokenized_labels, tokenizer, differences, high_weight=13, base_weight=1):
+def calculate_differential_weights(tokenized_labels, tokenizer, differences, high_weight=20, base_weight=1):
         """
         Calculate differential weights for tokenized labels (edited endings) based on differences.
         """
@@ -168,6 +168,9 @@ def chatgpt_zero_shot_inference(api_key, test_data):
     openai.api_key = api_key
     results = []
 
+    max_retries = 3
+    retry_delay = 5  # seconds
+
     for idx, row in test_data.iterrows():
         prompt = (
             "Generate the adapted ending to fill these three aspects:\n"
@@ -181,30 +184,36 @@ def chatgpt_zero_shot_inference(api_key, test_data):
             "Now, generate the adapted ending:"
         )
 
-        #print(f"Prompt for row {idx}: {prompt}")
+        for attempt in range(max_retries):
+            try:
+                response = openai.ChatCompletion.create(
+                    model="gpt-3.5-turbo-0125",
+                    messages=[
+                        {"role": "system", "content": "You are a helpful assistant."},
+                        {"role": "user", "content": prompt}
+                    ],
+                    max_tokens=50
+                )
+                generated_text = response['choices'][0]['message']['content'].strip()
+                break  # Exit the retry loop on success
+            except Exception as e:
+                print(f"API call failed for row {idx} with error: {e}")
+                if attempt < max_retries - 1:
+                    print(f"Retrying in {retry_delay} seconds...")
+                    time.sleep(retry_delay)
+                else:
+                    print("Max retries reached. Moving to the next item.")
+                    generated_text = 'Error'  # Or any placeholder indicating a failure
 
-        try:
-            response = openai.ChatCompletion.create(
-                model="gpt-3.5-turbo-0125",
-                messages=[
-                    {"role": "system", "content": "You are a helpful assistant."},
-                    {"role": "user", "content": prompt}
-                ],
-                max_tokens=50
-            )
-            generated_text = response['choices'][0]['message']['content'].strip()
-            #print(f"Generated text for row {idx}: {generated_text}")
-
-            results.append({
-                'story_id': row.get('story_id', str(uuid.uuid4())),  # Generate a UUID if story_id is not present
-                'premise': row['premise'],
-                'initial': row['initial'],
-                'counterfactual': row['counterfactual'],
-                'original_ending': row['original_ending'],
-                'generated_text': generated_text
-            })
-        except Exception as e:
-            print(f"API call failed for row {idx} with error: {e}")
+        results.append({
+            'story_id': row.get('story_id', str(uuid.uuid4())),  # Generate a UUID if story_id is not present
+            'premise': row['premise'],
+            'initial': row['initial'],
+            'counterfactual': row['counterfactual'],
+            'original_ending': row['original_ending'],
+            'edited_ending': row['edited_ending'],
+            'generated_text': generated_text
+        })
 
     return results
 
@@ -281,5 +290,89 @@ def chatgpt_one_shot_inference(api_key, test_data, example_selection):
             })
         except Exception as e:
             print(f"API call failed for row {idx} with error: {e}")
+
+    return results
+
+def chatgpt_one_shot_inference(api_key, test_data, example_selection):
+    """
+    Perform one-shot inference using the OpenAI GPT model.
+
+    Parameters:
+        api_key (str): OpenAI API key.
+        test_data (DataFrame): DataFrame containing the test data.
+        example_selection (str): If "fixed", use a fixed example. If "random", select a random example for each query.
+
+    Returns:
+        results (list): List of dictionaries containing the results.
+    """
+    openai.api_key = api_key
+    results = []
+
+    max_retries = 5  # Increase the number of retries
+    retry_delay = 10  # Increase the delay between retries (in seconds)
+
+    # Prepare the fixed example (using the first row for simplicity)
+    fixed_example = test_data.iloc[0] if example_selection == "fixed" else None
+
+    for idx, row in test_data.iterrows():
+        # Select a random example if required
+        if example_selection == "random":
+            example = test_data.sample(n=1).iloc[0]
+        else:
+            example = fixed_example
+
+        prompt = (
+            "Generate the adapted ending to fill these three aspects:\n"
+            "1. Minimal Intervention: Adjust the story's original ending with the minimal changes required to align it with the counterfactual event. The edited ending should remain as close as possible to the original ending.\n"
+            "2. Narrative Insight: Understand the story structure and make changes essential for maintaining the story's coherence and thematic consistency, avoiding unnecessary alterations.\n"
+            "3. Counterfactual Adaptability: Adapt the story's course in response to the counterfactual event that diverges from the initial event.\n\n"
+            "Example:\n"
+            f"Premise: {example['premise']}\n"
+            f"Initial event: {example['initial']}\n"
+            f"Original ending: {example['original_ending']}\n"
+            f"Counterfactual event: {example['counterfactual']}\n"
+            f"Adapted ending: {example['edited_ending']}\n\n"
+            f"Premise: {row['premise']}\n"
+            f"Initial event: {row['initial']}\n"
+            f"Original ending: {row['original_ending']}\n"
+            f"Counterfactual event: {row['counterfactual']}\n\n"
+            "Now, generate the adapted ending:"
+        )
+
+        for attempt in range(max_retries):
+            try:
+                response = openai.ChatCompletion.create(
+                    model="gpt-3.5-turbo-0125",
+                    messages=[
+                        {"role": "system", "content": "You are a helpful assistant."},
+                        {"role": "user", "content": prompt}
+                    ],
+                    max_tokens=50  # Adjust if needed
+                )
+                generated_text = response['choices'][0]['message']['content'].strip()
+
+                # Remove "Adapted ending:" prefix if present
+                if generated_text.lower().startswith("adapted ending:"):
+                    generated_text = generated_text[len("adapted ending:"):].strip()
+
+                break  # Exit the retry loop on success
+            except Exception as e:
+                logging.error(f"API call failed for row {idx} with error: {e}")
+                if attempt < max_retries - 1:
+                    logging.info(f"Retrying in {retry_delay} seconds...")
+                    time.sleep(retry_delay)
+                else:
+                    logging.error(f"Max retries reached for row {idx}. Moving to the next item.")
+                    generated_text = 'Error'  # Or any placeholder indicating a failure
+
+        results.append({
+            'story_id': row['story_id'],
+            'premise': row['premise'],
+            'initial': row['initial'],
+            'counterfactual': row['counterfactual'],
+            'original_ending': row['original_ending'],
+            'edited_ending': row['edited_ending'],
+            'generated_text': generated_text  # Store the generated text or error message
+        })
 
     return results
