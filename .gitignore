@@ -170,11 +170,6 @@ data/
 # Ignore all files inside 'bertviz' directory
 /bertviz/
 
-# Ignore all files and folders in the 'results' directory
-results/
-
-# But not this specific folder
-!/data/agirard/Projects/Timetravel/results/metrics/
 
 # Additional directories  to ignore
 src/BARTScore_metric/
