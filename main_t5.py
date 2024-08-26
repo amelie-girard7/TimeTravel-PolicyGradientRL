@@ -69,7 +69,7 @@ def main():
     Main function orchestrating the model training and evaluation process.
     """
     # Set the GPU manually
-    os.environ['CUDA_VISIBLE_DEVICES'] = '0'  # Make sure only one GPU is used
+    os.environ['CUDA_VISIBLE_DEVICES'] = '1'  # Make sure only one GPU is used
 
     try:
         # Timestamp for unique directory creation

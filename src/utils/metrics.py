@@ -188,6 +188,11 @@ class MetricsEvaluator:
                 try:
                     # Single-reference scoring
                     scores = self.bart_scorer.score(src_texts, tgt_texts, batch_size=4)
+
+                    # Validate that the number of scores matches the number of source texts
+                    if len(scores) != len(src_texts):
+                        raise ValueError(f"Mismatch in the number of scores returned. Expected {len(src_texts)} but got {len(scores)}.")
+
                     avg_score = sum(scores) / len(scores) if scores else float('nan')
                     logger.info(f"{label}_avg_score: {avg_score}")
                     bart_scores[f"{label}_avg_score"] = avg_score

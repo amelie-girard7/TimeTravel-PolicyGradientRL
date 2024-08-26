@@ -17,18 +17,18 @@ CONFIG = {
     "results_dir": ROOT_DIR / "results",  # Directory to save the results
     
     # File names
-    #"train_file": "train_supervised_small.json",
-    #"dev_file": "dev_data.json",
-    #"test_file": "gold_data.json",
+    "train_file": "train_supervised_small.json",
+    "dev_file": "dev_data.json",
+    "test_file": "gold_data.json",
 
-    "train_file": "train_supervised_small_sample.json",
-    "dev_file": "dev_data_sample.json",
-    "test_file": "test_data_sample.json",
+    #"train_file": "train_supervised_small_sample.json",
+    #"dev_file": "dev_data_sample.json",
+    #"test_file": "test_data_sample.json",
     
     # Model and training configurations
     "model_name": os.getenv('MODEL_NAME', "google/flan-t5-base"),
     #"model_name": os.getenv('MODEL_NAME', "google/flan-t5-large"),
-    "batch_size": int(os.getenv('BATCH_SIZE', 1)),
+    "batch_size": int(os.getenv('BATCH_SIZE', 4)),
     "num_workers": int(os.getenv('NUM_WORKERS', 3)),
     "max_epochs": int(os.getenv('MAX_EPOCHS', 3)),
     "learning_rate": float(os.getenv('LEARNING_RATE', 2e-5)),
@@ -48,7 +48,7 @@ CONFIG = {
     # BERTScorer settings
     "use_bert": True,  # Add this to control BERT usage
     "bert_scorer_model_type": "microsoft/deberta-xlarge-mnli",
-    "scorer_device": "cuda:0",
+    "scorer_device": "cuda:1",
     "bert_scorer_batch_size": 1,
 
     # BARTScorer settings
