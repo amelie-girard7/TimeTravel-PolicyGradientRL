@@ -13,9 +13,9 @@ os.makedirs(metrics_output_dir, exist_ok=True)  # Create the directory if it doe
 
 def process_epoch_data(df, epoch):
     """
-    Function to calculate and return similarity metrics for a specific epoch.
+    Function to calculate and return similarity metrics for Epoch 5 or 6.
     """
-    # Filter data for the specific epoch
+    # Filter data for the specific epoch (5 or 6)
     epoch_data = df[df['Epoch'] == epoch]
 
     # Extract necessary columns
@@ -29,17 +29,25 @@ def process_epoch_data(df, epoch):
     # Initialize the MetricsEvaluator
     evaluator = MetricsEvaluator()
 
-    # Calculate the metrics
+    # Calculate the metrics only for Epoch 5 or 6
     all_metrics = {}
+    
+    # Calculate BART similarity
     all_metrics.update(evaluator.calculate_and_log_bart_similarity(
         generated_texts, edited_endings, counterfactuals, initials, premises, original_endings, logger
     ))
+    
+    # Calculate BERT similarity
     all_metrics.update(evaluator.calculate_and_log_bert_similarity(
         generated_texts, edited_endings, counterfactuals, initials, premises, original_endings, logger
     ))
+    
+    # Calculate BLEU scores
     all_metrics.update(evaluator.calculate_and_log_bleu_scores(
         generated_texts, edited_endings, counterfactuals, initials, premises, original_endings, logger
     ))
+    
+    # Calculate ROUGE scores
     all_metrics.update(evaluator.calculate_and_log_rouge_scores(
         generated_texts, edited_endings, counterfactuals, initials, premises, original_endings, logger
     ))
@@ -65,8 +73,11 @@ def process_file(file_path, model_id):
         # Get unique epochs
         epochs = df['Epoch'].unique()
 
-        # Process each epoch
-        for epoch in epochs:
+        # Filter epochs for only Epoch 5 and Epoch 6
+        epochs_to_process = [epoch for epoch in epochs if epoch in [5, 6]]
+
+        # Process each filtered epoch
+        for epoch in epochs_to_process:
             epoch_metrics_df = process_epoch_data(df, epoch)
             if combined_metrics_df.empty:
                 combined_metrics_df = epoch_metrics_df
@@ -90,19 +101,44 @@ def main():
     """
     Main function to process the CSV files for all specified models.
     """
-    # List of model IDs to process
     model_ids = [
-        '2024-03-22-10',
-        '2024-08-15-10',
-        '2024-08-15-20',
-        '2024-05-14-20',
-        '2024-04-10-14',
-        '2024-04-10-10',
-        '2024-04-09-22',
-        '2024-04-09-11',
-        '2024-04-08-13',
-        '2024-04-08-09',
-        '2024-03-22-15'
+        # T5-base models (Test data)
+        '2024-03-22-10',  # Weight: 1-1
+        '2024-09-02-21',  # Weight: 5-1
+        '2024-09-03-06',  # Weight: 10-1
+        '2024-04-09-11',  # Weight: 1-12
+        '2024-04-09-22',  # Weight: 1-13
+        '2024-09-03-08',  # Weight: 15-1
+        '2024-04-08-13',  # Weight: 20-1
+        '2024-09-03-11',  # Weight: 25-1
+        '2024-09-03-15',  # Weight: 30-1
+
+        # T5-large models (Test data)
+        '2024-03-22-15',  # Weight: 1-1
+        '2024-08-29-14',  # Weight: 5-1
+        '2024-08-28-20',  # Weight: 10-1
+        '2024-04-10-10',  # Weight: 15-1
+        '2024-04-08-09',  # Weight: 20-1
+        '2024-09-02-14',  # Weight: 25-1
+        '2024-04-10-14',  # Weight: 30-1
+
+        # T5-base models (Gold data)
+        '2024-09-03-17',  # Weight: 5-1
+        '2024-09-03-20',  # Weight: 10-1
+        '2024-09-04-12',  # Weight: 12-1
+        '2024-08-15-10',  # Weight: 13-1
+        '2024-09-04-01',  # Weight: 15-1
+        '2024-09-04-06',  # Weight: 20-1
+        '2024-09-04-08',  # Weight: 25-1
+        '2024-09-04-10',  # Weight: 30-1
+
+        # T5-large models (Gold data)
+        '2024-08-30-11',  # Weight: 5-1
+        '2024-08-30-06',  # Weight: 10-1
+        '2024-08-29-21',  # Weight: 15-1
+        '2024-08-15-20',  # Weight: 20-1
+        '2024-09-02-09',  # Weight: 25-1
+        '2024-08-30-16'   # Weight: 30-1
     ]
     
     for model_id in model_ids:

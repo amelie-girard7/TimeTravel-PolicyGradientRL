@@ -92,35 +92,37 @@ class MetricsEvaluator:
 
         print(f"ROUGE Comparisons: {all_comparisons}")
 
-        # Calculate and log ROUGE scores for each comparison
+        # Initialize dictionary to store Rouge-L F-scores
         rouge_scores = {}
+
+        # Calculate and log ROUGE-L F-scores for each comparison
         for label, hypotheses, references in all_comparisons:
             if references:
                 try:
+                    # Calculate Rouge-L score
                     rouge_scores_set = self.rouge.get_scores(hypotheses, references, avg=True)
-                    for score_type in ['rouge-1', 'rouge-2', 'rouge-l']:
-                        rouge_scores[f"{label}_{score_type}_f"] = rouge_scores_set[score_type]['f']
-                        #rouge_scores[f"{label}_{score_type}_p"] = rouge_scores_set[score_type]['p']
-                        #rouge_scores[f"{label}_{score_type}_r"] = rouge_scores_set[score_type]['r']
-                        logger.info(f"{label}_{score_type}_f: {rouge_scores_set[score_type]['f']}")
-                        #logger.info(f"{label}_{score_type}_p: {rouge_scores_set[score_type]['p']}")
-                        #logger.info(f"{label}_{score_type}_r: {rouge_scores_set[score_type]['r']}")
-                        print(f"{label}_{score_type}_f: {rouge_scores_set[score_type]['f']}")
-                        #print(f"{label}_{score_type}_p: {rouge_scores_set[score_type]['p']}")
-                        #print(f"{label}_{score_type}_r: {rouge_scores_set[score_type]['r']}")
+                    score_type = 'rouge-l'
+
+                    # Store Rouge-L F-score
+                    rouge_scores[f"{label}_{score_type}_f"] = rouge_scores_set[score_type]['f']
+
+                    # Log and print the Rouge-L F-score
+                    logger.info(f"{label}_{score_type}_f: {rouge_scores_set[score_type]['f']}")
+                    print(f"{label}_{score_type}_f: {rouge_scores_set[score_type]['f']}")
+                    
                 except Exception as e:
                     logger.error(f"Error calculating {label}: {e}")
                     rouge_scores[f"{label}_f"] = 'N/A'
-                    #rouge_scores[f"{label}_p"] = 'N/A'
-                    #rouge_scores[f"{label}_r"] = 'N/A'
                     print(f"Error calculating {label}: {e}")
+
         return rouge_scores
 
     def calculate_and_log_bert_similarity(self, all_generated_texts, all_edited_endings, all_counterfactuals, all_initials, all_premises, all_original_endings, logger):
         """
-        Calculates and logs BERT similarity scores for various comparisons of generated texts and references.
+        Calculates and logs BERT similarity F1 scores for various comparisons of generated texts and references.
         """
-        print("Calculating BERT similarity scores...")
+        print("Calculating BERT similarity F1 scores...")
+
         # Define all comparisons to calculate BERT similarity scores
         all_comparisons = [
             ('bert_prediction_edited', all_generated_texts, all_edited_endings),
@@ -134,30 +136,29 @@ class MetricsEvaluator:
 
         print(f"BERT Comparisons: {all_comparisons}")
 
-        # Calculate and log BERT similarity scores for each comparison
+        # Calculate and log BERT F1 scores for each comparison
         bert_scores = {}
+        
         for label, texts_a, texts_b in all_comparisons:
             if texts_b:
                 try:
-                    P, R, F1 = self.bert_scorer.score(texts_a, texts_b)
-                    #avg_precision = P.mean().item()
-                    #avg_recall = R.mean().item()
-                    avg_f1 = F1.mean().item()
+                    # Get the F1 score (third element of the tuple)
+                    _, _, f1 = self.bert_scorer.score(texts_a, texts_b)
+                    
+                    # Calculate the mean F1 score across all text pairs
+                    avg_f1 = f1.mean().item()
+                    
+                    # Log and store the F1 score for the current comparison
                     logger.info(f"{label}_f1: {avg_f1}")
-                    #logger.info(f"{label}_precision: {avg_precision}")
-                    #logger.info(f"{label}_recall: {avg_recall}")
                     bert_scores[f"{label}_f1"] = avg_f1
-                    #bert_scores[f"{label}_precision"] = avg_precision
-                    #bert_scores[f"{label}_recall"] = avg_recall
                     print(f"{label}_f1: {avg_f1}")
-                    #print(f"{label}_precision: {avg_precision}")
-                    #print(f"{label}_recall: {avg_recall}")
+                    
                 except Exception as e:
+                    # Log the error if something goes wrong in the BERT score calculation
                     logger.error(f"Error calculating {label}: {e}")
                     bert_scores[f"{label}_f1"] = 'N/A'
-                    #bert_scores[f"{label}_precision"] = 'N/A'
-                    #bert_scores[f"{label}_recall"] = 'N/A'
                     print(f"Error calculating {label}: {e}")
+
         return bert_scores
 
     def calculate_and_log_bart_similarity(self, all_generated_texts, all_edited_endings, all_counterfactuals, all_initials, all_premises, all_original_endings, logger):

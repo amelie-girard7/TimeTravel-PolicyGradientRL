@@ -37,9 +37,10 @@ def load_first_line_from_json(file_path):
         logger.error(f"Error reading from {file_path}: {e}")
         raise IOError(f"Error reading from {file_path}: {e}")
 
-def calculate_differential_weights(tokenized_labels, tokenizer, differences, high_weight=13, base_weight=1):
+def calculate_differential_weights(tokenized_labels, tokenizer, differences, high_weight=12, base_weight=1):
         """
-        Calculate differential weights for tokenized labels (edited endings) based on differences.
+        Calculate differential weights for tokenized labels (edited endings) based on diff
+        erences.
         """
         # Initialize differential weights with base_weight
         differential_weights = torch.full(tokenized_labels.shape, fill_value=base_weight, dtype=torch.float)

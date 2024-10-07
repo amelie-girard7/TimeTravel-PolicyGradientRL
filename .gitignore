@@ -181,3 +181,6 @@ docs/
 src/utils/tools/
 logs/
 .vscode/
+
+#results folder
+results/

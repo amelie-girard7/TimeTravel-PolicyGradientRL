@@ -19,6 +19,7 @@ CONFIG = {
     # File names
     "train_file": "train_supervised_small.json",
     "dev_file": "dev_data.json",
+    #"test_file": "test_data.json",
     "test_file": "gold_data.json",
 
     #"train_file": "train_supervised_small_sample.json",
@@ -30,7 +31,7 @@ CONFIG = {
     #"model_name": os.getenv('MODEL_NAME', "google/flan-t5-large"),
     "batch_size": int(os.getenv('BATCH_SIZE', 4)),
     "num_workers": int(os.getenv('NUM_WORKERS', 3)),
-    "max_epochs": int(os.getenv('MAX_EPOCHS', 3)),
+    "max_epochs": int(os.getenv('MAX_EPOCHS', 6)),
     "learning_rate": float(os.getenv('LEARNING_RATE', 2e-5)),
     "use_custom_loss": True,  # True if you want to use custom loss function
     "output_attentions": False,  # Enable/disable attention outputs
@@ -56,7 +57,7 @@ CONFIG = {
     "bart_scorer_checkpoint": "facebook/bart-large-cnn",
 
     # GPT Inference and evaluation settings
-    "inference_mode": "one_shot",  # Options: zero_shot, one_shot
+    "inference_mode": "zero_shot",  # Options: zero_shot, one_shot
     "run_similarities_only": True,  # If True, only run similarities
     "example_selection": "random"  # "fixed" or "random" - Example selection for one_shot mode
 
