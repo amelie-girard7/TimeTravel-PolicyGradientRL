@@ -1,10 +1,15 @@
-# TimeTravel-PolicyGradientRL: Reinforcement Learning with Metrics-Based Reward Functions for Counterfactual Story Rewriting
+# TimeTravel-PolicyGradientRL: Reinforcement Learning with Counterfactual Metrics as Reward for Story Rewriting
+
+This project investigates the use of **Reinforcement Learning (RL)**, particularly policy gradient methods, to improve model performance in **counterfactual story rewriting**. By treating text generation as a sequential decision-making problem, we train models explicitly using counterfactual evaluation metrics such as **BLEU**, **ROUGE**, **BERTScore**, and **BARTScore** as reward functions, with a regularization term subtracted to prevent overfitting.
+
+---
 
 ## Table of Contents
+
 1. [Overview](#overview)
 2. [Key Features](#key-features)
 3. [Project Structure](#project-structure)
-4. [Reward and Regularization Formula](#reward-and-regularization-formula)
+4. [Reward Function and Regularization](#reward-function-and-regularization)
 5. [Usage](#usage)
    - [Installation](#installation)
    - [Training the Model](#training-the-model)
@@ -15,17 +20,23 @@
 
 ## Overview
 
-This project enhances counterfactual story rewriting using reinforcement learning (RL), with a focus on using text similarity metrics (BLEU, ROUGE, BERTScore, and BARTScore) as reward functions. Additionally, we include regularization to prevent overfitting and ensure balanced learning. The model adjusts a story’s ending in response to counterfactual events, making minimal but precise changes while maintaining narrative coherence.
+In counterfactual story rewriting, models modify a story’s ending to reflect a hypothetical event, requiring minimal yet accurate changes while maintaining narrative coherence. 
+
+This project applies **policy gradient** RL methods to improve model performance by directly optimizing for **counterfactual rewriting metrics** such as BLEU, ROUGE, BERTScore, and BARTScore. We use the scores of these metrics as reward functions in our experiments, while subtracting a regularization term to control overfitting and ensure minimal necessary changes.
 
 ---
 
 ## Key Features
 
-- **Reinforcement Learning with Regularized Custom Rewards**: The model optimizes based on custom reward functions derived from text similarity metrics and includes a regularization term (\(\lambda = 0.5\)) to stabilize learning and prevent overfitting.
-  
-- **Custom Training Objective**: A training objective that integrates rewards from multiple evaluation metrics, enhancing model performance on tasks requiring minimal intervention and narrative coherence.
+- **Reinforcement Learning with Counterfactual Metrics as Reward**:
+  - Applies policy gradient methods to optimize text generation based on non-differentiable evaluation metrics.
+  - Uses BLEU, ROUGE, BERTScore, and BARTScore as rewards to guide the model's behavior.
 
-- **Metrics Integration**: Incorporates BLEU, ROUGE, BERTScore, and BARTScore during training to guide the model towards generating more accurate and contextually appropriate counterfactual story endings.
+- **Regularization Term**:
+  - Introduces a regularization term $ \lambda = 0.5 $ to prevent overfitting and ensure a balanced learning process.
+
+- **Metric Comparison**:
+  - Investigates and compares the effectiveness of different metrics as reward functions for RL.
 
 ---
 
@@ -35,36 +46,50 @@ This project enhances counterfactual story rewriting using reinforcement learnin
 TimeTravel-PolicyGradientRL/
 ├── src/
 │   ├── models/
-│   │   └── model_T5.py             # The T5 fine-tuner model with custom loss, RL, and regularization.
+│   │   └── model_T5.py             # T5 model with policy gradient implementation.
 │   ├── utils/
-│   │   ├── config.py               # Configuration file for paths, parameters, and reward-related settings.
-│   │   ├── metrics.py              # Custom evaluation metrics used as rewards.
+│   │   ├── config.py               # Configuration for paths, parameters, reward settings.
+│   │   ├── metrics.py              # Evaluation metrics (BLEU, ROUGE, BERTScore, BARTScore).
 │   │   └── utils.py                # Utility functions (data preprocessing, differential weights).
-│   ├── data_loader.py              # DataLoader for processing and batching JSON data.
-│   ├── main_t5.py                  # Main training script with RL and regularization integration.
-│   └── main_t5_metrics.py          # Evaluation script to calculate and log post-training metrics.
-├── results/                        # Directory to store training logs, evaluation metrics, and checkpoints.
-├── data/                           # Directory to store datasets and processed data.
+│   ├── data_loader.py              # DataLoader for JSON data processing.
+│   ├── main_t5.py                  # Main script for training with RL and metric rewards.
+│   └── main_t5_metrics.py          # Evaluation script for post-training metrics comparison.
+├── results/                        # Directory for logs, metrics, and model checkpoints.
+├── data/                           # Directory for datasets and processed data.
 └── README.md                       # This README file.
 ```
 
 ---
 
-## Reward and Regularization Formula
+## Reward Function and Regularization
 
-The reward \( R_{\text{total}} \) is calculated as a weighted sum of BLEU, ROUGE, BERTScore, and BARTScore, with a regularization term \( \lambda = 0.5 \) to prevent overfitting.
+### Policy Gradient Reward Function
 
-\[
-R_{\text{total}} = w_{\text{BLEU}} R_{\text{BLEU}} + w_{\text{ROUGE}} R_{\text{ROUGE}} + w_{\text{BERT}} R_{\text{BERT}} + w_{\text{BART}} R_{\text{BART}} - \lambda
-\]
+In this project, we explore the use of **BLEU**, **ROUGE**, **BERTScore**, and **BARTScore** as reward functions for training our model using policy gradient methods. The model's goal is to generate coherent counterfactual story endings that maximize the score of the chosen metric.
 
-Where \( w_{\text{BLEU}} = w_{\text{ROUGE}} = w_{\text{BERT}} = w_{\text{BART}} = 0.25 \) are the default weights for each metric. The regularization term \( \lambda = 0.5 \) penalizes the reward to prevent the model from overfitting and to promote generalization.
-
-The new loss function, integrating the reward, is:
+The reward $ R(y) $ for a generated ending $ y $ is calculated as:
 
 \[
-\mathcal{L}_{\text{new}} = \mathcal{L} - R_{\text{total}}
+R(y) = \text{MetricScore}(y) - 0.5
 \]
+
+Where:
+- **MetricScore** is the score calculated by the chosen metric (BLEU, ROUGE, BERTScore, or BARTScore) for the generated ending compared to the reference (true) ending.
+- $ 0.5 $ is a regularization term that penalizes excessive changes and helps prevent overfitting.
+
+### Loss Function with Reward
+
+The policy gradient method optimizes the model using the reward function defined above. The loss function for training becomes:
+
+\[
+L_{\text{new}} = L_{\text{MLE}} - \mathbb{E}[R(y)]
+\]
+
+Where:
+- $ L_{\text{MLE}} $ is the standard Maximum Likelihood Estimation loss.
+- $ R(y) $ is the reward derived from the chosen metric (BLEU, ROUGE, BERTScore, or BARTScore).
+
+This allows the model to focus on generating high-quality story endings that score well according to the selected metric, while the regularization term ensures the model doesn't make unnecessary large changes.
 
 ---
 
@@ -72,13 +97,13 @@ The new loss function, integrating the reward, is:
 
 ### Installation
 
-1. Clone the repository:
+1. **Clone the repository**:
 
    ```bash
    git clone https://github.com/amelie-girard7/TimeTravel-PolicyGradientRL.git
    ```
 
-2. Install the required Python packages:
+2. **Install the required dependencies**:
 
    ```bash
    pip install -r requirements.txt
@@ -86,29 +111,30 @@ The new loss function, integrating the reward, is:
 
 ### Training the Model
 
-You can train the model using reinforcement learning with metrics as reward functions and regularization by running the following command:
+You can train the model using policy gradient methods and select a reward function (BLEU, ROUGE, BERTScore, or BARTScore):
 
 ```bash
-python src/main_t5.py
+python src/main_t5.py --reward_metric BLEU
 ```
 
-This will:
-- Fine-tune the T5 model on the counterfactual rewriting task.
-- Use BLEU, ROUGE, BERTScore, and BARTScore as reward functions in the training loop, with regularization.
-- Save model checkpoints and log the training progress in the `results/` directory.
+The script will:
+- Fine-tune the T5 model using RL with the selected reward metric.
+- Save model checkpoints and logs in the `results/` directory.
 
 ### Evaluating the Model
 
-After training, you can evaluate the model's performance using the following command:
+After training, evaluate the model using:
 
 ```bash
 python src/main_t5_metrics.py --model_checkpoint /path/to/checkpoint.ckpt
 ```
 
-This will calculate BLEU, ROUGE, BERTScore, and BARTScore on the validation or test set and save the results to `results/metrics`.
+This will compute the metrics (BLEU, ROUGE, BERTScore, BARTScore) for comparison and save the results in `results/metrics`.
 
 ---
 
 ## License
 
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+```
+
