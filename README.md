@@ -1,44 +1,76 @@
-# TimeTravel-PolicyGradientRL: Enhancing Counterfactual Story Rewriting via Policy Gradient Optimization
+# TimeTravel-PolicyGradientRL: Reinforcement Learning with Metrics-Based Reward Functions for Counterfactual Story Rewriting
 
-### **Overview**
+## Table of Contents
+1. [Overview](#overview)
+2. [Key Features](#key-features)
+3. [Project Structure](#project-structure)
+4. [Reward and Regularization Formula](#reward-and-regularization-formula)
+5. [Usage](#usage)
+   - [Installation](#installation)
+   - [Training the Model](#training-the-model)
+   - [Evaluating the Model](#evaluating-the-model)
+6. [License](#license)
 
-This project focuses on enhancing counterfactual story rewriting using reinforcement learning and custom reward functions. Counterfactual story rewriting requires models to adjust a narrative's ending based on a hypothetical event, making minimal yet precise changes to maintain narrative coherence. The project introduces a novel training objective and evaluation metrics tailored to this task, leveraging policy gradient methods and reinforcement learning to optimize model performance.
+---
 
-### **Key Features**
+## Overview
 
-- **Custom Training Objective:** A novel training objective designed specifically for counterfactual story rewriting, ensuring minimal, selective, and coherent narrative changes in response to counterfactual events.
+This project enhances counterfactual story rewriting using reinforcement learning (RL), with a focus on using text similarity metrics (BLEU, ROUGE, BERTScore, and BARTScore) as reward functions. Additionally, we include regularization to prevent overfitting and ensure balanced learning. The model adjusts a story’s ending in response to counterfactual events, making minimal but precise changes while maintaining narrative coherence.
+
+---
+
+## Key Features
+
+- **Reinforcement Learning with Regularized Custom Rewards**: The model optimizes based on custom reward functions derived from text similarity metrics and includes a regularization term (\(\lambda = 0.5\)) to stabilize learning and prevent overfitting.
   
-- **Reinforcement Learning with Custom Reward Functions:** Policy gradient methods are used to directly optimize models with respect to evaluation metrics such as ROUGE, BARTScore, and BERTScore, guiding the model to produce more coherent and contextually appropriate outputs.
+- **Custom Training Objective**: A training objective that integrates rewards from multiple evaluation metrics, enhancing model performance on tasks requiring minimal intervention and narrative coherence.
 
-- **Counterfactual Rewriting Metrics (CRMs):** New metrics that measure the alignment of the generated endings with the reference while minimizing unnecessary changes from the original story.
+- **Metrics Integration**: Incorporates BLEU, ROUGE, BERTScore, and BARTScore during training to guide the model towards generating more accurate and contextually appropriate counterfactual story endings.
 
-### **Repository Structure**
+---
 
-- `src/` - Contains the implementation of the model, training scripts, and evaluation functions.
-- `data/` - Example datasets, including the TimeTravel dataset used for counterfactual story rewriting.
-- `experiments/` - Scripts to reproduce the experiments and visualize results, including token-level heatmaps for qualitative analysis.
-- `README.md` - This README file.
+## Project Structure
 
-### **Dataset**
+```bash
+TimeTravel-PolicyGradientRL/
+├── src/
+│   ├── models/
+│   │   └── model_T5.py             # The T5 fine-tuner model with custom loss, RL, and regularization.
+│   ├── utils/
+│   │   ├── config.py               # Configuration file for paths, parameters, and reward-related settings.
+│   │   ├── metrics.py              # Custom evaluation metrics used as rewards.
+│   │   └── utils.py                # Utility functions (data preprocessing, differential weights).
+│   ├── data_loader.py              # DataLoader for processing and batching JSON data.
+│   ├── main_t5.py                  # Main training script with RL and regularization integration.
+│   └── main_t5_metrics.py          # Evaluation script to calculate and log post-training metrics.
+├── results/                        # Directory to store training logs, evaluation metrics, and checkpoints.
+├── data/                           # Directory to store datasets and processed data.
+└── README.md                       # This README file.
+```
 
-We use the [TimeTravel dataset](https://arxiv.org/abs/1911.12399), designed for counterfactual reasoning and narrative understanding tasks. The dataset contains stories with original and edited endings based on counterfactual events.
+---
 
-### **Methodology**
+## Reward and Regularization Formula
 
-1. **Counterfactual Story Rewriting Task:**
-   - **Premise (XP):** The foundational scenario of the story.
-   - **Initial Event (XIE):** The original event leading to the story's ending.
-   - **Original Ending (XOE):** The original narrative conclusion.
-   - **Counterfactual Event (XCE):** A divergent hypothetical event.
-   - **Edited Ending (YEE):** The modified conclusion, reflecting the counterfactual event.
+The reward \( R_{\text{total}} \) is calculated as a weighted sum of BLEU, ROUGE, BERTScore, and BARTScore, with a regularization term \( \lambda = 0.5 \) to prevent overfitting.
 
-2. **Training Objective:**
-   The model is optimized to generate the edited ending \(Y_{EE}\), balancing coherence and minimal changes with a custom loss function.
+\[
+R_{\text{total}} = w_{\text{BLEU}} R_{\text{BLEU}} + w_{\text{ROUGE}} R_{\text{ROUGE}} + w_{\text{BERT}} R_{\text{BERT}} + w_{\text{BART}} R_{\text{BART}} - \lambda
+\]
 
-3. **Reinforcement Learning:**
-   Policy gradient methods are used to maximize reward functions based on evaluation metrics, encouraging the model to focus on selective and coherent narrative changes.
+Where \( w_{\text{BLEU}} = w_{\text{ROUGE}} = w_{\text{BERT}} = w_{\text{BART}} = 0.25 \) are the default weights for each metric. The regularization term \( \lambda = 0.5 \) penalizes the reward to prevent the model from overfitting and to promote generalization.
 
-### **Installation**
+The new loss function, integrating the reward, is:
+
+\[
+\mathcal{L}_{\text{new}} = \mathcal{L} - R_{\text{total}}
+\]
+
+---
+
+## Usage
+
+### Installation
 
 1. Clone the repository:
 
@@ -46,53 +78,37 @@ We use the [TimeTravel dataset](https://arxiv.org/abs/1911.12399), designed for 
    git clone https://github.com/amelie-girard7/TimeTravel-PolicyGradientRL.git
    ```
 
-2. Install the necessary dependencies:
+2. Install the required Python packages:
 
    ```bash
    pip install -r requirements.txt
    ```
 
-### **Running the Model**
+### Training the Model
 
-To train the model, use the following command:
-
-```bash
-python src/train.py --config configs/default.yaml
-```
-
-For evaluation:
+You can train the model using reinforcement learning with metrics as reward functions and regularization by running the following command:
 
 ```bash
-python src/evaluate.py --model-checkpoint path/to/checkpoint
+python src/main_t5.py
 ```
 
-### **Evaluation**
+This will:
+- Fine-tune the T5 model on the counterfactual rewriting task.
+- Use BLEU, ROUGE, BERTScore, and BARTScore as reward functions in the training loop, with regularization.
+- Save model checkpoints and log the training progress in the `results/` directory.
 
-The model is evaluated using the following metrics:
+### Evaluating the Model
 
-- **ROUGE:** Measures the overlap between generated and reference text.
-- **BARTScore:** A scoring method for text generation quality based on BART.
-- **BERTScore:** Measures similarity between the generated and reference endings using BERT embeddings.
-- **CRMs:** Custom metrics to evaluate counterfactual alignment and minimal narrative changes.
+After training, you can evaluate the model's performance using the following command:
 
-### **Results**
-
-Our experiments demonstrate that the proposed methods outperform baseline models, effectively incorporating counterfactual reasoning into the generated stories while maintaining coherence and minimizing unnecessary changes.
-
-### **Citations**
-
-If you use this work, please cite the following paper:
-
-```
-@article{girard2024counterfactual,
-  title={Enhancing Counterfactual Story Rewriting via Policy Gradient Optimization and Custom Rewards},
-  author={Girard, Amelie and Jauregi Unanue, Inigo and Piccardi, Massimo},
-  journal={arXiv preprint arXiv:xxxx.xxxxx},
-  year={2024}
-}
+```bash
+python src/main_t5_metrics.py --model_checkpoint /path/to/checkpoint.ckpt
 ```
 
-### **License**
+This will calculate BLEU, ROUGE, BERTScore, and BARTScore on the validation or test set and save the results to `results/metrics`.
+
+---
+
+## License
 
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
-
