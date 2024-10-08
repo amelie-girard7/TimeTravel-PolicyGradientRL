@@ -8,7 +8,7 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 # Directory where metrics files will be saved
-metrics_output_dir = '/data/agirard/Projects/Timetravel/results/metrics'
+metrics_output_dir = '/data/agirard/Projects/TimeTravel-PolicyGradientRL/results/metrics'
 os.makedirs(metrics_output_dir, exist_ok=True)  # Create the directory if it doesn't exist
 
 def process_epoch_data(df, epoch):
@@ -142,7 +142,7 @@ def main():
     ]
     
     for model_id in model_ids:
-        base_path = f'/data/agirard/Projects/Timetravel/models/model_{model_id}'
+        base_path = f'/data/agirard/Projects/TimeTravel-PolicyGradientRL/models/model_{model_id}'
         
         # Process validation details file
         validation_file_path = os.path.join(base_path, 'validation_details.csv')
