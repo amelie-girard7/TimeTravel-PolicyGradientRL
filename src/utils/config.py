@@ -1,4 +1,4 @@
-# /data/agirard/Projects/Timetravel/src/utils/config.py
+# /data/agirard/Projects/TimeTravel-PolicyGradientRL/src/utils/config.py
 import os
 from pathlib import Path
 
@@ -55,11 +55,6 @@ CONFIG = {
     # BARTScorer settings
     "use_bart": True,  # Add this to control BART usage
     "bart_scorer_checkpoint": "facebook/bart-large-cnn",
-
-    # GPT Inference and evaluation settings
-    "inference_mode": "zero_shot",  # Options: zero_shot, one_shot
-    "run_similarities_only": True,  # If True, only run similarities
-    "example_selection": "random"  # "fixed" or "random" - Example selection for one_shot mode
 
 }
 
