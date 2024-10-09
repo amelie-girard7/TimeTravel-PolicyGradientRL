@@ -1,4 +1,4 @@
-#/data/agirard/Projects/src/main_t5.py
+# /data/agirard/Projects/TimeTravel-PolicyGradientRL/src/main_t5.py
 import os
 import sys
 import datetime
@@ -19,29 +19,41 @@ logger = logging.getLogger(__name__)
 
 def setup_model(model_dir):
     """
-    Prepares the FlanT5FineTuner model for training.
+    Prepares the FlanT5FineTuner model for training. 
+    This includes loading from the provided checkpoint.
     """
-    model = FlanT5FineTuner(CONFIG["model_name"], model_dir)
+    # Load the pre-trained model from the specified checkpoint if available
+    checkpoint_path = CONFIG.get("checkpoint_path")
+    if checkpoint_path and os.path.exists(checkpoint_path):
+        logger.info(f"Loading model from checkpoint: {checkpoint_path}")
+        model = FlanT5FineTuner.load_from_checkpoint(
+            checkpoint_path, model_name=CONFIG["model_name"], model_dir=model_dir
+        )
+    else:
+        logger.info(f"Initializing model from pre-trained: {CONFIG['model_name']}")
+        model = FlanT5FineTuner(CONFIG["model_name"], model_dir)
+
     return model
 
 def setup_dataloaders(model, tokenizer):
     """
     Creates dataloaders for training, validation, and testing phases.
     """
-    logger.info("Setting up dataloaders...")  # Log the dataloader setup process
+    logger.info("Setting up dataloaders...")
     data_path = CONFIG["data_dir"] / 'transformed'
 
     batch_size = CONFIG["batch_size"]
     num_workers = CONFIG["num_workers"]
 
-    dataloaders = create_dataloaders(data_path, model.tokenizer, batch_size, num_workers)
+    dataloaders = create_dataloaders(data_path, tokenizer, batch_size, num_workers)
     return dataloaders
 
 def setup_trainer(model_dir):
     """
-    Configures the training environment with checkpoints and logging.
+    Configures the training environment, including checkpoints, logging, and GPU setup.
     """
-    logger.info("Setting up the trainer...")  # Log the trainer setup process
+    logger.info("Setting up the trainer...")
+    # Create a checkpoint callback to save the model with the lowest validation loss
     checkpoint_callback = ModelCheckpoint(
         dirpath=model_dir,
         filename='checkpoint-{epoch:02d}-{val_loss:.2f}',
@@ -50,18 +62,20 @@ def setup_trainer(model_dir):
         mode='min',
         verbose=True
     )
-    
-    # Setup loggers: TensorBoard and CSV
+
+    # Set up loggers: TensorBoard and CSV logger
     tensorboard_logger = TensorBoardLogger(save_dir=model_dir, name="training_logs")
     csv_logger = CSVLogger(save_dir=model_dir, name="csv_logs")
 
+    # Set up the PyTorch Lightning Trainer
     trainer = Trainer(
         max_epochs=CONFIG["max_epochs"],
         accelerator='gpu',  # Use GPU if available
         devices=1,  # Use a single GPU
-        callbacks=[checkpoint_callback],
+        callbacks=[checkpoint_callback],  # Attach checkpointing callback
         logger=[tensorboard_logger, csv_logger],  # Attach loggers
     )
+
     return trainer
 
 def main():
@@ -85,11 +99,11 @@ def main():
         # Prepare model, dataloaders, and trainer
         model = setup_model(model_dir)
 
-        logger.info("Model initialized, about to load dataloaders.") 
+        logger.info("Model initialized, about to load dataloaders...") 
         # Setup dataloaders
         dataloaders = setup_dataloaders(model, tokenizer)
 
-        logger.info("Dataloaders created, about to set up the trainer.")
+        logger.info("Dataloaders created, about to set up the trainer...")
         # Setup trainer
         trainer = setup_trainer(model_dir)
         
