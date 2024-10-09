@@ -17,44 +17,49 @@ CONFIG = {
     "results_dir": ROOT_DIR / "results",  # Directory to save the results
     
     # File names
-    #"train_file": "train_supervised_small.json",
-    #"dev_file": "dev_data.json",
-    #"test_file": "test_data.json",
-    #"test_file": "gold_data.json",
-
     #"train_file": "train_supervised_small_sample.json",
     #"dev_file": "dev_data_sample.json",
     #"test_file": "test_data_sample.json",
+
+    "train_file": "train_supervised_small.json",
+    "dev_file": "dev_data.json",
+    "test_file": "test_data.json",
     
     # Model and training configurations
     "model_name": os.getenv('MODEL_NAME', "google/flan-t5-base"),
-    #"model_name": os.getenv('MODEL_NAME', "google/flan-t5-large"),
+    "checkpoint_path": "/data/agirard/Projects/TimeTravel-PolicyGradientRL/models/model_2024-03-22-10/checkpoint-epoch=05-val_loss=0.86.ckpt",  # Updated checkpoint path
     "batch_size": int(os.getenv('BATCH_SIZE', 4)),
     "num_workers": int(os.getenv('NUM_WORKERS', 3)),
     "max_epochs": int(os.getenv('MAX_EPOCHS', 6)),
     "learning_rate": float(os.getenv('LEARNING_RATE', 2e-5)),
-    "use_custom_loss": True,  # True if you want to use custom loss function
+    "use_custom_loss": True,  # Use the custom loss with differential weights
     "output_attentions": False,  # Enable/disable attention outputs
-    "log_attentions": False, # True if you want to log the attention
+    "log_attentions": False,  # True if you want to log the attention
     
-    # preprocess data parameters
-    "max_length": 512,
+    # Preprocess data parameters
+    "max_length": 512,  # Maximum length for input data
 
     # Text generation parameters
-    "max_gen_length": 250,
+    "max_gen_length": 250,  # Maximum length for generated text
+
+    # Reward-based training configuration
+    "reward_metric": "rouge",  # Can be "rouge", "bleu", "bert", or "bart"
+    "baseline_score": 0.5,     # Fixed baseline score for reward calculation
+    "reward_weight": 1.0,      # Weight applied to the reward in the loss function
+
 
     # Evaluation metrics settings
     "eval_batch_size": 1,
     
     # BERTScorer settings
-    "use_bert": True,  # Add this to control BERT usage
+    "use_bert": True,  # Enable BERT usage
     "bert_scorer_model_type": "microsoft/deberta-xlarge-mnli",
-    "scorer_device": "cuda:1",
+    "scorer_device": "cuda:0",  # Device for BERT scorer
     "bert_scorer_batch_size": 1,
 
     # BARTScorer settings
-    "use_bart": True,  # Add this to control BART usage
-    "bart_scorer_checkpoint": "facebook/bart-large-cnn",
+    "use_bart": True,  # Enable BART usage
+    "bart_scorer_checkpoint": "facebook/bart-large-cnn",  # BART model checkpoint
 
 }
 

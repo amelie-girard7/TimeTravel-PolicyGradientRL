@@ -1,4 +1,7 @@
-# TimeTravel-PolicyGradientRL: Reinforcement Learning with Counterfactual Metrics as Reward for Story Rewriting
+# Enhancing Counterfactual Story Rewriting via Policy Gradient Optimization and Custom Rewards
+
+*Authors: Amelie Girard, Inigo Jauregi, Massimo Piccardi*  
+
 
 This project explores the application of **Reinforcement Learning (RL)**, specifically policy gradient methods, to enhance model performance in **counterfactual story rewriting**. By framing text generation as a sequential decision-making process, we train models using evaluation metrics—including both conventional metrics and previously proposed task-specific metrics—as reward functions. This approach aims to guide the model more effectively towards generating appropriate counterfactual story endings. By comparing the model's performance against a **baseline**, we ensure that improvements are genuine and not merely artifacts of overfitting to the metrics.
 
