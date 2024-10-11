@@ -52,19 +52,68 @@ class FlanT5FineTuner(pl.LightningModule):
         )
 
     def training_step(self, batch, batch_idx):
-        """
-        Performs a single training step, computing the loss and reward.
+        input_ids = batch['input_ids']
+        attention_mask = batch['attention_mask']
+        batch_size = input_ids.size(0)
 
-        Args:
-            batch (dict): A batch of input data.
-            batch_idx (int): Index of the batch (for tracking during training).
+        # Initialize the decoder input with the decoder start token
+        decoder_start_token_id = self.model.config.decoder_start_token_id
+        decoder_input_ids = torch.full(
+            (batch_size, 1), decoder_start_token_id, dtype=torch.long, device=input_ids.device
+        )
+        generated_ids = decoder_input_ids
+        log_probs = []
+        max_length = CONFIG["max_gen_length"]
+        past_key_values = None
 
-        Returns:
-            loss (tensor): The calculated policy gradient loss for the batch.
-        """
-        # [Your existing training_step code with debugging prints]
-        # ... (omitted for brevity)
-        pass  # Replace this line with your actual training_step code
+        for t in range(max_length):
+            outputs = self(
+                input_ids=input_ids,
+                attention_mask=attention_mask,
+                decoder_input_ids=decoder_input_ids,
+                past_key_values=past_key_values,
+                use_cache=True,
+            )
+            next_token_logits = outputs.logits[:, -1, :]
+            past_key_values = outputs.past_key_values
+
+            probs = torch.softmax(next_token_logits, dim=-1)
+            m = torch.distributions.Categorical(probs)
+            next_tokens = m.sample()
+            selected_log_probs = m.log_prob(next_tokens)
+            log_probs.append(selected_log_probs)
+
+            generated_ids = torch.cat([generated_ids, next_tokens.unsqueeze(-1)], dim=-1)
+            decoder_input_ids = next_tokens.unsqueeze(-1)
+
+        sequence_log_prob = torch.stack(log_probs, dim=1).sum(dim=1)
+
+        # Decode the generated token IDs back to text
+        generated_texts = self.tokenizer.batch_decode(
+            generated_ids[:, 1:], skip_special_tokens=True
+        )
+
+        # Get the reference endings
+        edited_endings = batch['edited_ending']
+        if isinstance(edited_endings, tuple):
+            edited_endings = list(edited_endings)
+        edited_endings = [str(ee) for ee in edited_endings]
+
+        # Compute the reward
+        metrics_evaluator = MetricsEvaluator()
+        rewards = metrics_evaluator.calculate_reward(generated_texts, edited_endings)
+        rewards = torch.tensor(rewards, device=sequence_log_prob.device)
+        rewards = rewards - CONFIG["baseline_score"]
+
+        # Compute the loss
+        loss = -rewards * sequence_log_prob
+        loss = loss.mean()
+
+        # Log the training loss and reward
+        self.log('train_loss', loss, on_step=True, on_epoch=True, prog_bar=True, logger=True)
+        self.log('train_reward', rewards.mean(), on_step=True, on_epoch=True, prog_bar=True, logger=True)
+
+        return loss
 
     def validation_step(self, batch, batch_idx):
         """
