@@ -17,13 +17,13 @@ CONFIG = {
     "results_dir": ROOT_DIR / "results",  # Directory to save the results
     
     # File names
-    #"train_file": "train_supervised_small_sample.json",
-    #"dev_file": "dev_data_sample.json",
-    #"test_file": "test_data_sample.json",
+    "train_file": "train_supervised_small_sample.json",
+    "dev_file": "dev_data_sample.json",
+    "test_file": "test_data_sample.json",
     
-    "train_file": "train_supervised_small.json",
-    "dev_file": "dev_data.json",
-    "test_file": "test_data.json",
+    #"train_file": "train_supervised_small.json",
+    #"dev_file": "dev_data.json",
+    #"test_file": "test_data.json",
 
 
     # Model and training configurations
