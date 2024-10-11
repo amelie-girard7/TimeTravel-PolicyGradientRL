@@ -17,25 +17,18 @@ CONFIG = {
     "results_dir": ROOT_DIR / "results",  # Directory to save the results
     
     # File names
-    #"train_file": "train_supervised_small_sample.json",
-    #"dev_file": "dev_data_sample.json",
-    #"test_file": "test_data_sample.json",
+    "train_file": "train_supervised_small_sample.json",
+    "dev_file": "dev_data_sample.json",
+    "test_file": "test_data_sample.json",
 
-    "train_file": "train_supervised_small.json",
-    "dev_file": "dev_data.json",
-    "test_file": "test_data.json",
-    
     # Model and training configurations
     "model_name": os.getenv('MODEL_NAME', "google/flan-t5-base"),
     "checkpoint_path": "/data/agirard/Projects/TimeTravel-PolicyGradientRL/models/model_2024-03-22-10/checkpoint-epoch=05-val_loss=0.86.ckpt",  # Updated checkpoint path
     "batch_size": int(os.getenv('BATCH_SIZE', 4)),
     "num_workers": int(os.getenv('NUM_WORKERS', 3)),
-    "max_epochs": int(os.getenv('MAX_EPOCHS', 6)),
+    "max_epochs": int(os.getenv('MAX_EPOCHS', 3)),
     "learning_rate": float(os.getenv('LEARNING_RATE', 2e-5)),
-    "use_custom_loss": True,  # Use the custom loss with differential weights
-    "output_attentions": False,  # Enable/disable attention outputs
-    "log_attentions": False,  # True if you want to log the attention
-    
+
     # Preprocess data parameters
     "max_length": 512,  # Maximum length for input data
 
@@ -43,24 +36,24 @@ CONFIG = {
     "max_gen_length": 250,  # Maximum length for generated text
 
     # Reward-based training configuration
-    "reward_metric": "rouge",  # Can be "rouge", "bleu", "bert", or "bart"
-    "baseline_score": 0.5,     # Fixed baseline score for reward calculation
-    "reward_weight": 1.0,      # Weight applied to the reward in the loss function
-
+    "reward_metric": os.getenv("REWARD_METRIC", "rouge"),  # Can be "rouge", "bleu", "bert", etc.
+    "baseline_score": float(os.getenv("BASELINE_SCORE", 0.5)),  # Fixed baseline score for reward
+    "reward_weight": float(os.getenv("REWARD_WEIGHT", 1.0)),  # Weight applied to the reward in the loss function
+    "use_entropy_regularization": os.getenv("USE_ENTROPY_REGULARIZATION", "True").lower() in ("true", "1"),  # Boolean flag for entropy
+    "entropy_weight": float(os.getenv("ENTROPY_WEIGHT", 0.01)),  # Weight for the entropy regularization term
 
     # Evaluation metrics settings
     "eval_batch_size": 1,
     
     # BERTScorer settings
-    "use_bert": True,  # Enable BERT usage
+    "use_bert": False,  # Enable BERT usage
     "bert_scorer_model_type": "microsoft/deberta-xlarge-mnli",
     "scorer_device": "cuda:0",  # Device for BERT scorer
     "bert_scorer_batch_size": 1,
 
     # BARTScorer settings
-    "use_bart": True,  # Enable BART usage
+    "use_bart": False,  # Enable BART usage
     "bart_scorer_checkpoint": "facebook/bart-large-cnn",  # BART model checkpoint
-
 }
 
 # Optionally, validate or create the directories
