@@ -1,193 +1,153 @@
+import csv
+import logging
+import os
 import torch
 import torch.nn.functional as F
+from transformers import T5ForConditionalGeneration, T5Config, T5Tokenizer
 import pytorch_lightning as pl
-from transformers import T5ForConditionalGeneration, T5Tokenizer
-from src.utils.metrics import MetricsEvaluator
+from pathlib import Path
 from src.utils.config import CONFIG
-import torch.distributions
+from src.utils.metrics import MetricsEvaluator
+
+logger = logging.getLogger(__name__)
 
 class FlanT5FineTuner(pl.LightningModule):
     """
-    A PyTorch Lightning module for fine-tuning the Flan-T5 model with policy gradient methods.
-    The model uses a custom token generation method and computes the loss based on rewards.
+    A PyTorch Lightning module for fine-tuning the Flan-T5 model using policy gradient reinforcement learning.
+    This class handles token generation, reward calculation, and policy gradient-based optimization.
     """
 
     def __init__(self, model_name, model_dir):
         """
         Initializes the fine-tuner with the specified model and tokenizer.
-
-        Args:
-            model_name (str): Name of the pre-trained model to load.
-            model_dir (str or Path): Directory where model logs and checkpoints will be saved.
         """
         super().__init__()
-        # Save the hyperparameters (model_name, model_dir) so that PyTorch Lightning can use them for logging and checkpoints
-        self.save_hyperparameters()
 
-        # Load the pre-trained T5 model and the tokenizer from Hugging Face transformers
-        self.model = T5ForConditionalGeneration.from_pretrained(model_name)
+        # Ensure model_dir is a Path object
+        model_dir = Path(model_dir)
+
+        # Load the configuration for the model with output_attentions
+        config = T5Config.from_pretrained(model_name, output_attentions=CONFIG["output_attentions"])
+
+        # Initialize the T5 model and tokenizer with the specified configuration
+        self.model = T5ForConditionalGeneration.from_pretrained(model_name, config=config)
         self.tokenizer = T5Tokenizer.from_pretrained(model_name)
+        
+        # Set file paths for saving validation and test details as CSV files
+        self.val_csv_file_path = model_dir / "validation_details.csv"
+        self.test_csv_file_path = model_dir / "test_details.csv"
 
-        # A list to store output during testing, which will be aggregated at the end of the test epoch
-        self.test_outputs = []
-
+        # Initialize the list to store validation step outputs for aggregating results over an epoch
+        self.current_val_step_outputs = []
+        
+        # Initialize a list to store detailed validation information for logging purposes
+        self.epoch_validation_details = []
+  
     def forward(self, input_ids, attention_mask, decoder_input_ids=None, **kwargs):
         """
-        Forward pass through the T5 model. This method is typically used during validation and testing.
-
-        Args:
-            input_ids (tensor): Encoded input sequences (from tokenizer).
-            attention_mask (tensor): Mask to avoid attending to padding tokens.
-            decoder_input_ids (tensor): Input to the decoder (previously generated tokens).
-            **kwargs: Additional arguments (e.g., past_key_values, use_cache).
-
-        Returns:
-            outputs: The model's output (logits, etc.).
+        Forward pass using the T5 model. This method uses the Hugging Face `generate` function
+        to generate token sequences and log probabilities (for reinforcement learning).
         """
-        # Forward pass through the T5 model with optional decoder input ids and any additional kwargs
-        return self.model(
+        outputs = self.model.generate(
             input_ids=input_ids,
             attention_mask=attention_mask,
-            decoder_input_ids=decoder_input_ids,
-            **kwargs
+            max_length=kwargs.get('max_length', 50),  # Default max_length can be 50 or CONFIG-based
+            num_beams=1,  # Ensuring one sequence per input
+            output_scores=True,  # Return scores (logits)
+            return_dict_in_generate=True  # Return the full output including scores and sequences
         )
 
-    def custom_generate(self, input_ids, attention_mask, max_length):
-        """
-        Custom generation function to generate sequences token-by-token, tracking log probabilities 
-        for policy gradient computation. This method enables step-wise generation for more control.
+        # Log probabilities of the generated tokens for policy gradient computation
+        log_probs = torch.log_softmax(outputs.scores[-1], dim=-1)
 
-        Args:
-            input_ids (tensor): Encoded input sequences (from tokenizer).
-            attention_mask (tensor): Mask to avoid attending to padding tokens.
-            max_length (int): Maximum length for generation.
-
-        Returns:
-            generated_ids (tensor): Generated token sequences.
-            sequence_log_prob (tensor): Log probabilities for the entire sequence.
-        """
-        batch_size = input_ids.size(0)  # The batch size, i.e., how many sequences we are processing at once
-
-        # The first token input to the decoder is always the "start" token for T5.
-        decoder_start_token_id = self.model.config.decoder_start_token_id
-
-        # We initialize decoder inputs with the start token for all sequences in the batch
-        decoder_input_ids = torch.full(
-            (batch_size, 1), decoder_start_token_id, dtype=torch.long, device=input_ids.device
-        )
-
-        # We initialize `generated_ids` with the decoder start token (first token) for all sequences
-        generated_ids = decoder_input_ids
-        
-        # `log_probs` will store the log probability of each token generated
-        log_probs = []
-
-        # `past_key_values` helps the model remember the past token sequence for more efficient computation
-        past_key_values = None
-
-        # Generate tokens one-by-one, iterating for up to `max_length`
-        for t in range(max_length):
-            # Forward pass through the model with the current decoder input and previous tokens (cached in past_key_values)
-            outputs = self.model(
-                input_ids=input_ids,
-                attention_mask=attention_mask,
-                decoder_input_ids=decoder_input_ids,
-                past_key_values=past_key_values,
-                use_cache=True,  # Enable caching of previous key/values for faster generation
-            )
-
-            # The logits (unnormalized probabilities) for the next token are the last token's output from the model
-            next_token_logits = outputs.logits[:, -1, :]
-            
-            # Cache the past key/values for efficient sequential generation
-            past_key_values = outputs.past_key_values
-
-            # Compute probabilities from the logits and sample a token from the probability distribution
-            probs = torch.softmax(next_token_logits, dim=-1)  # Softmax to get probabilities
-            m = torch.distributions.Categorical(probs)  # Treat these probabilities as a categorical distribution
-
-            next_tokens = m.sample()  # Sample the next token from the distribution
-            selected_log_probs = m.log_prob(next_tokens)  # Get the log probability of the sampled token
-            log_probs.append(selected_log_probs)  # Store the log probability
-
-            # Append the new token to the generated sequence
-            generated_ids = torch.cat([generated_ids, next_tokens.unsqueeze(-1)], dim=-1)
-
-            # Update the decoder inputs with the newly generated token for the next iteration
-            decoder_input_ids = next_tokens.unsqueeze(-1)
-
-        # After generating all tokens, we stack the log probabilities for each token and sum them across the sequence
-        sequence_log_prob = torch.stack(log_probs, dim=1).sum(dim=1)  # Shape: (batch_size,)
-        
-        return generated_ids, sequence_log_prob
+        # Return the generated sequences and log probabilities
+        return outputs['sequences'], log_probs
 
     def training_step(self, batch, batch_idx):
         """
-        Training step for policy gradient-based fine-tuning. The model generates sequences,
-        computes rewards, and updates the model based on policy gradient loss.
-
+        Training step for policy gradient-based fine-tuning.
+        The model generates sequences, computes rewards, and calculates policy gradient loss.
+        
         Args:
-            batch (dict): The input batch of data.
-            batch_idx (int): The batch index.
+            batch (dict): A batch of input data.
+            batch_idx (int): The index of the current batch.
 
         Returns:
-            loss (tensor): The computed loss value for the current batch.
+            tensor: The computed loss value for the current training batch.
         """
-        input_ids = batch['input_ids']  # The input sequences (tokenized)
-        attention_mask = batch['attention_mask']  # Mask to prevent attending to padding tokens
-        batch_size = input_ids.size(0)
+        input_ids = batch['input_ids']
+        attention_mask = batch['attention_mask']
 
-        # Debugging: Check the shape of input tensors to ensure correctness
-        print(f"DEBUG: input_ids shape = {input_ids.shape}")
-        print(f"DEBUG: attention_mask shape = {attention_mask.shape}")
+        # Print the batch size of input
+        print(f"Batch size (input_ids): {input_ids.size(0)}")
 
-        # Use custom_generate to handle token generation and log probability computation
-        generated_ids, sequence_log_prob = self.custom_generate(
-            input_ids, attention_mask, CONFIG["max_gen_length"]  # CONFIG defines the max sequence length
+        # Call the forward function to generate token sequences and log probabilities.
+        generated_ids, log_probs = self(
+            input_ids=input_ids, 
+            attention_mask=attention_mask, 
+            max_length=CONFIG["max_gen_length"]
         )
 
-        # Shift the generated_ids to remove the first token (the start token), which isn't part of the final output
+        # Print the sizes of generated sequences and log probabilities
+        print(f"Generated sequences size: {generated_ids.size()}")  # Should be (batch_size, seq_len)
+        print(f"Log probabilities size: {log_probs.size()}")  # Should match the number of tokens per sequence
+
+        # Shift generated sequences to remove the start token for decoding.
         generated_ids_shifted = generated_ids[:, 1:]
 
-        # Decode the generated token IDs back to text for comparison with ground truth (reference endings)
-        generated_texts = self.tokenizer.batch_decode(
-            generated_ids_shifted, skip_special_tokens=True
-        )
+        # Decode the generated token IDs into text for comparison with ground truth.
+        generated_texts = self.tokenizer.batch_decode(generated_ids_shifted, skip_special_tokens=True)
 
-        # Debugging: Check the generated text sequences
-        print(f"DEBUG: Generated texts: {generated_texts}")
+        # Ground truth edited endings for reward calculation.
+        edited_endings = [str(ee) for ee in batch['edited_ending']]
 
-        # Get the reference endings (ground truth) from the batch
-        edited_endings = batch['edited_ending']
-        
-        # If the ground truth is a tuple, convert it to a list (to handle various input formats)
-        if isinstance(edited_endings, tuple):
-            edited_endings = list(edited_endings)
-        
-        # Convert the ground truth to string format for comparison
-        edited_endings = [str(ee) for ee in edited_endings]
+        # Print the number of generated texts and edited endings
+        print(f"Number of generated texts: {len(generated_texts)}")
+        print(f"Number of edited endings: {len(edited_endings)}")
 
-        # Debugging: Check the reference (ground truth) edited endings
-        print(f"DEBUG: Reference edited endings: {edited_endings}")
-
-        # Use the MetricsEvaluator class to compute the reward based on generated texts and ground truth
+        # Use the MetricsEvaluator to calculate the reward (e.g., based on ROUGE or BERTScore).
         metrics_evaluator = MetricsEvaluator()
         rewards = metrics_evaluator.calculate_reward(generated_texts, edited_endings)
-        
-        # Convert rewards into a tensor for use in the loss computation
-        rewards = torch.tensor(rewards, device=sequence_log_prob.device)
-        
-        # Subtract the baseline score from the rewards for normalization (as per policy gradient method)
+
+        # Print the size of rewards
+        print(f"Rewards size: {len(rewards)}")  # Should match the number of sequences
+
+        # Convert rewards to a tensor (without gradient tracking) and move to the correct device (GPU 0).
+        rewards = torch.tensor(rewards, dtype=torch.float32).to('cuda:0')
+
+        # Ensure that the rewards match the batch size
+        if rewards.size(0) != input_ids.size(0):
+            raise ValueError(f"Reward size ({rewards.size(0)}) does not match batch size ({input_ids.size(0)}).")
+
+        # Subtract the baseline score to normalize rewards for policy gradient calculation.
         rewards = rewards - CONFIG["baseline_score"]
 
-        # Debugging: Check the computed rewards
-        print(f"DEBUG: Rewards: {rewards}")
+        # Sum the log probabilities over the token dimension to get sequence-level log probabilities
+        if isinstance(log_probs, list):
+            # Each element in log_probs corresponds to token-level log probabilities
+            # Summing over the tokens for each sequence to get sequence-level log_probs
+            sequence_log_prob_sum = torch.stack([lp.sum(dim=-1) for lp in log_probs], dim=0).sum(dim=-1)
+        else:
+            # Direct sum of the log_probs if it was returned in another format
+            sequence_log_prob_sum = log_probs.sum(dim=1)  # Summing over the token (time) dimension
 
-        # Compute the policy gradient loss as negative rewards multiplied by log probabilities of generated tokens
-        loss = -rewards * sequence_log_prob
-        loss = loss.mean()  # Take the mean loss over the batch
+        # Print the size of the summed log probabilities
+        print(f"Summed log probabilities size: {sequence_log_prob_sum.size()}")  # Should match the batch size
 
-        # Log the training loss and the average reward to TensorBoard
+        # Ensure that the sizes of rewards and sequence_log_prob_sum match before computing the loss
+        if rewards.size(0) != sequence_log_prob_sum.size(0):
+            raise ValueError(f"Mismatch in rewards and log_probs sizes: rewards ({rewards.size(0)}), log_probs ({sequence_log_prob_sum.size(0)})")
+
+        # Compute the policy gradient loss as the negative rewards times the log probabilities.
+        loss = -rewards * sequence_log_prob_sum
+
+        # Ensure that loss requires a gradient
+        loss = loss.mean().requires_grad_()  # Ensure loss requires gradient computation
+
+        # Print the final loss value
+        print(f"Training loss: {loss.item()}")
+
+        # Log the training loss and average reward.
         self.log('train_loss', loss, on_step=True, on_epoch=True, prog_bar=True, logger=True)
         self.log('train_reward', rewards.mean(), on_step=True, on_epoch=True, prog_bar=True, logger=True)
 
@@ -195,107 +155,138 @@ class FlanT5FineTuner(pl.LightningModule):
 
     def validation_step(self, batch, batch_idx):
         """
-        Validation step to compute the validation loss.
+        Executes a validation step and logs validation metrics.
 
         Args:
             batch (dict): A batch of validation data.
 
         Returns:
-            val_loss (tensor): The validation loss.
+            tensor: Validation loss.
         """
-        # Forward pass through the model using the input_ids and attention_mask
+        # Forward pass through the T5 model using input_ids and attention_mask.
         input_ids = batch['input_ids']
         attention_mask = batch['attention_mask']
         labels = batch['labels']
 
+        # Calculate the output logits and validation loss.
         outputs = self.model(input_ids=input_ids, attention_mask=attention_mask, labels=labels)
-
-        # Extract the validation loss from the model's output
         val_loss = outputs.loss
 
-        # Log the validation loss to track performance during training
+        # Log the validation loss.
         self.log('val_loss', val_loss, on_step=False, on_epoch=True, prog_bar=True, logger=True)
+
+        # Generate text from the model for comparison with edited endings.
+        generated_texts = self.generate_text(input_ids=batch['input_ids'], attention_mask=batch['attention_mask'])
+
+        # Ground truth edited endings for evaluation
+        edited_endings = [str(ee) for ee in batch['edited_ending']]
+
+        # Append validation details for CSV logging later
+        validation_details = [{
+            'Epoch': self.current_epoch,
+            'Premise': premise,
+            'Initial': initial,
+            'Counterfactual': counterfactual,
+            'Original Ending': original_ending,
+            'Edited Ending': edited_ending,
+            'Generated Text': generated_text,
+        } for premise, initial, counterfactual, original_ending, edited_ending, generated_text
+        in zip(batch['premise'], batch['initial'], batch['counterfactual'], batch['original_ending'], batch['edited_ending'], generated_texts)]
+
+        # Collect validation details to log at the end of the epoch
+        self.epoch_validation_details.extend(validation_details)
+
+        # Print for debugging purposes
+        print(f"Validation step completed for batch {batch_idx}")
+        print(f"Validation details: {validation_details}")
 
         return val_loss
 
+    def on_validation_epoch_end(self, test_flag=False):
+        """
+        Handles operations at the end of each validation epoch.
+        Saves the results to CSV and cleans up temporary data.
+        """
+        print(f"Epoch validation details: {self.epoch_validation_details}")  # Debug print
+
+        # Determine CSV path based on test_flag (whether this is validation or test)
+        csv_file_path = self.determine_csv_path(test_flag)
+        
+        # Log validation details to CSV if available
+        if self.epoch_validation_details:
+            print(f"Logging validation details to {csv_file_path}")
+            self.log_to_csv(csv_file_path, self.epoch_validation_details)
+        else:
+            logger.info("No validation details available for logging.")
+            print("No validation details available for logging.")
+
+        # Clean up stored data for the next epoch
+        self.cleanup_epoch_data()
+
     def test_step(self, batch, batch_idx):
         """
-        Test step to compute metrics during testing.
+        Executes a test step by reusing validation logic.
 
         Args:
             batch (dict): A batch of test data.
-            batch_idx (int): Index of the batch (for tracking during testing).
+            batch_idx (int): Index of the batch.
 
         Returns:
-            None
+            tensor: Validation (test) loss.
         """
-        input_ids = batch['input_ids']
-        attention_mask = batch['attention_mask']
-
-        # Generate output sequences using beam search (or greedy search) for testing
-        generated_ids = self.model.generate(
-            input_ids=input_ids,
-            attention_mask=attention_mask,
-            max_length=CONFIG["max_gen_length"],
-            num_beams=CONFIG.get("num_beams", 5),  # Use beam search if configured
-            early_stopping=True  # Stop generation when all beams are finished
-        )
-
-        # Decode the generated sequences to human-readable text
-        generated_texts = self.tokenizer.batch_decode(generated_ids, skip_special_tokens=True)
-
-        # Get the reference edited endings from the batch
-        edited_endings = batch['edited_ending']
-
-        # If the edited endings are a tuple, convert them to a list
-        if isinstance(edited_endings, tuple):
-            edited_endings = list(edited_endings)
-        
-        # Convert the edited endings to string format for comparison
-        edited_endings = [str(ee) for ee in edited_endings]
-
-        # Debugging: Check the generated texts and the ground truth edited endings
-        print("DEBUG (Test Step): generated_texts:", generated_texts)
-        print("DEBUG (Test Step): edited_endings:", edited_endings)
-
-        # Use the metrics evaluator to calculate rewards (e.g., ROUGE scores)
-        metrics_evaluator = MetricsEvaluator()
-        rewards = metrics_evaluator.calculate_reward(generated_texts, edited_endings)
-
-        # Store the rewards for aggregation at the end of the test epoch
-        self.test_outputs.extend(rewards)
-
-        # Compute and log the average reward for this batch
-        avg_reward = torch.tensor(rewards).mean()
-        self.log('test_reward', avg_reward, on_step=False, on_epoch=True, prog_bar=True, logger=True)
-
+        return self.validation_step(batch, batch_idx)
+    
     def on_test_epoch_end(self):
         """
-        Called at the end of the test epoch to aggregate and log metrics.
-
-        Returns:
-            None
+        Handles the end of the test epoch by calling the validation end logic and saving test results.
         """
-        # Aggregate all rewards collected during the test epoch
-        avg_test_reward = torch.tensor(self.test_outputs).mean()
+        return self.on_validation_epoch_end(test_flag=True)
 
-        # Log the aggregated reward as the final test metric
-        self.log('avg_test_reward', avg_test_reward, on_step=False, on_epoch=True, prog_bar=True, logger=True)
+    def generate_text(self, input_ids, attention_mask):
+        """
+        Generates text sequences based on input_ids and attention_mask.
+        """
+        # Generate text sequences
+        generated_ids = self.model.generate(
+            input_ids=input_ids, 
+            attention_mask=attention_mask, 
+            max_length=CONFIG["max_gen_length"],
+        )
+        # Decode generated sequences into text
+        generated_texts = [
+            self.tokenizer.decode(generated_id, skip_special_tokens=True, clean_up_tokenization_spaces=True)
+            for generated_id in generated_ids
+        ]
+        # Return generated texts 
+        return generated_texts
 
-        # Clear the test outputs list for the next test run
-        self.test_outputs = []
+    def determine_csv_path(self, test_flag):
+        """
+        Determines the CSV file path based on whether this is a validation or test step.
+        """
+        return self.test_csv_file_path if test_flag else self.val_csv_file_path
+
+    def log_to_csv(self, csv_file_path, details):
+        """
+        Logs the validation or test results into a CSV file.
+        """
+        file_exists = os.path.isfile(csv_file_path)
+        with open(csv_file_path, 'a', newline='') as csvfile:
+            writer = csv.DictWriter(csvfile, fieldnames=details[0].keys())
+            if not file_exists:
+                writer.writeheader()
+            writer.writerows(details)
+
+    def cleanup_epoch_data(self):
+        """
+        Cleans up the data collected during the epoch.
+        """
+        self.epoch_validation_details.clear()
+        self.current_val_step_outputs.clear()
 
     def configure_optimizers(self):
         """
-        Configures the optimizer for training. Uses AdamW with the learning rate specified in CONFIG.
-
-        Returns:
-            optimizer (torch.optim.Optimizer): The AdamW optimizer.
+        Configures the optimizer for the model using AdamW.
         """
-        # Get the learning rate from the CONFIG dictionary
         lr = CONFIG["learning_rate"]
-
-        # Use AdamW optimizer, which is well-suited for transformer-based models
-        optimizer = torch.optim.AdamW(self.parameters(), lr=lr)
-        
-        return optimizer
+        return torch.optim.AdamW(self.parameters(), lr=lr)
