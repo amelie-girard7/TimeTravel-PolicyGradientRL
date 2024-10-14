@@ -1,4 +1,3 @@
-# /data/agirard/Projects/TimeTravel-PolicyGradientRL/src/utils/config.py
 import os
 from pathlib import Path
 
@@ -21,11 +20,6 @@ CONFIG = {
     "dev_file": "dev_data_sample.json",
     "test_file": "test_data_sample.json",
     
-    #"train_file": "train_supervised_small.json",
-    #"dev_file": "dev_data.json",
-    #"test_file": "test_data.json",
-
-
     # Model and training configurations
     "model_name": os.getenv('MODEL_NAME', "google/flan-t5-base"),
     "checkpoint_path": "/data/agirard/Projects/TimeTravel-PolicyGradientRL/models/model_2024-03-22-10/checkpoint-epoch=05-val_loss=0.86.ckpt",  # Updated checkpoint path
@@ -42,11 +36,7 @@ CONFIG = {
 
     # Reward-based training configuration
     "reward_metric": os.getenv("REWARD_METRIC", "rouge"),  # Can be "rouge", "bleu", "bert", etc.
-    "baseline_score": float(os.getenv("BASELINE_SCORE", 0.5)),  # Fixed baseline score for reward
-    "reward_weight": float(os.getenv("REWARD_WEIGHT", 1.0)),  # Weight applied to the reward in the loss function
-    "use_entropy_regularization": os.getenv("USE_ENTROPY_REGULARIZATION", "True").lower() in ("true", "1"),  # Boolean flag for entropy
-    "entropy_weight": float(os.getenv("ENTROPY_WEIGHT", 0.01)),  # Weight for the entropy regularization term
-
+    "baseline_score": float(os.getenv("BASELINE_SCORE", 0.5)),  
     # Evaluation metrics settings
     "eval_batch_size": 1,
     
@@ -59,6 +49,9 @@ CONFIG = {
     # BARTScorer settings
     "use_bart": False,  # Enable BART usage
     "bart_scorer_checkpoint": "facebook/bart-large-cnn",  # BART model checkpoint
+
+    # NEW ADDITION: Output attentions for model interpretability
+    "output_attentions": False,  # Set this to True if you want the model to return attention weights
 }
 
 # Optionally, validate or create the directories

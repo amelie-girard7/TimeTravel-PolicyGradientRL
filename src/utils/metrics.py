@@ -1,10 +1,9 @@
-# /data/agirard/Projects/TimeTravel-PolicyGradientRL/src/utils/metrics.py
-
 import logging
 from sacrebleu.metrics import BLEU
 from rouge import Rouge
 from bert_score import BERTScorer
 from src.utils.config import CONFIG
+import torch
 
 logger = logging.getLogger(__name__)
 
@@ -24,17 +23,16 @@ class MetricsEvaluator:
         # Initialize ROUGE for ROUGE score calculation
         self.rouge = Rouge()  
 
-        # Optionally initialize BERTScorer if configured to use BERTScore
+        # Initialize BERTScorer if configured to use BERTScore
         if CONFIG.get("use_bert", False):
             self.bert_scorer = BERTScorer(
                 model_type=CONFIG["bert_scorer_model_type"],  # The BERT model type to use
-                device=CONFIG["scorer_device"],  # The device (GPU/CPU) to use for evaluation
+                device='cuda:0',  # Ensure that all computations happen on GPU 0
                 num_layers=None,  # Optionally specify number of layers; default to all layers
                 batch_size=CONFIG["bert_scorer_batch_size"]  # Batch size for evaluation
             )
         else:
-            # If BERTScore is not to be used, set bert_scorer to None
-            self.bert_scorer = None
+            self.bert_scorer = None  # Set bert_scorer to None if BERTScore is not used
 
         print("MetricsEvaluator initialized.")
 
@@ -48,50 +46,46 @@ class MetricsEvaluator:
             references (list of str): Reference texts (ground truth).
 
         Returns:
-            rewards (list of float): A list of reward values per example.
+            rewards (tensor): A tensor of reward values per example on GPU 0.
         """
         reward_metric = CONFIG.get("reward_metric", "rouge")
 
-        # Debugging prints
-        print("DEBUG: Type of generated_texts:", type(generated_texts))
-        print("DEBUG: generated_texts:", generated_texts)
-        print("DEBUG: Type of references:", type(references))
-        print("DEBUG: references:", references)
+        print(f"Reward metric: {reward_metric}")  # Print the reward metric being used
+        print(f"Generated texts: {generated_texts}")  # Print the generated texts
+        print(f"Reference texts: {references}")  # Print the reference (ground truth) texts
 
-        # Ensure both generated_texts and references are lists
-        if isinstance(generated_texts, tuple):
-            generated_texts = list(generated_texts)
-        if isinstance(references, tuple):
-            references = list(references)
-
-        # Ensure that the elements are strings
+        # Ensure both generated_texts and references are lists of strings
         generated_texts = [str(gt) for gt in generated_texts]
         references = [str(ref) for ref in references]
-
-        # Debugging prints after processing
-        print("DEBUG: Type of generated_texts after processing:", type(generated_texts))
-        print("DEBUG: generated_texts after processing:", generated_texts)
-        print("DEBUG: Type of references after processing:", type(references))
-        print("DEBUG: references after processing:", references)
 
         # Case 1: ROUGE-L is selected as the reward metric
         if reward_metric == "rouge":
             # Calculate ROUGE-L F1 score between generated and reference texts
+            print("Calculating ROUGE-L scores...")  # Indicate that ROUGE-L is being calculated
             rouge_scores = self.rouge.get_scores(generated_texts, references, avg=False)
             rewards = [score['rouge-l']['f'] for score in rouge_scores]  # List of rewards per example
+            print(f"ROUGE-L scores: {rouge_scores}")  # Print the ROUGE scores
+            print(f"ROUGE-L rewards: {rewards}")  # Print the ROUGE-L rewards
 
         # Case 2: BERTScore is selected as the reward metric
         elif reward_metric == "bert":
             if self.bert_scorer is None:
                 raise ValueError("BERTScore is not initialized. Set 'use_bert' to True in CONFIG.")
+            print("Calculating BERTScore...")  # Indicate that BERTScore is being calculated
             _, _, f1 = self.bert_scorer.score(generated_texts, references)
             rewards = f1.tolist()  # Convert tensor to list
+            print(f"BERT F1 scores: {f1}")  # Print the BERT F1 scores
+            print(f"BERT rewards: {rewards}")  # Print the BERTScore rewards
 
-        # If the reward metric specified is unsupported, raise an error
+        # Raise an error if an unsupported reward metric is specified
         else:
             raise ValueError(f"Unsupported reward metric: {reward_metric}")
 
-        return rewards
+        # Convert the rewards to a tensor and move it to the correct device (GPU 0)
+        rewards_tensor = torch.tensor(rewards, dtype=torch.float32).to('cuda:0')
+        print(f"Rewards tensor (on GPU 0): {rewards_tensor}")  # Print the final rewards tensor
+        return rewards_tensor
+
 
     def calculate_and_log_bleu_scores(self, all_generated_texts, all_edited_endings, all_counterfactuals, all_initials, all_premises, all_original_endings, logger):
         """
