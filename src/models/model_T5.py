@@ -129,27 +129,24 @@ class FlanT5FineTuner(pl.LightningModule):
             batch (dict): A batch of validation data.
 
         Returns:
-            tensor: Validation loss.
+            tensor: Validation loss (optional).
         """
-        # Forward pass through the T5 model using input_ids and attention_mask.
         input_ids = batch['input_ids']
         attention_mask = batch['attention_mask']
-        labels = batch['labels']
+        device = input_ids.device
 
-        # Calculate the output logits and validation loss.
-        outputs = self.model(input_ids=input_ids, attention_mask=attention_mask, labels=labels)
-        val_loss = outputs.loss
+        # Generate sequences using self.forward()
+        generated_ids = self.forward(input_ids, attention_mask)
 
-        # Log the validation loss.
-        self.log('val_loss', val_loss, on_step=False, on_epoch=True, prog_bar=True, logger=True)
-
-        # Generate text from the model for comparison with edited endings.
-        generated_texts = self.generate_text(input_ids=batch['input_ids'], attention_mask=batch['attention_mask'])
-
-        # Ground truth edited endings for evaluation
+        # Decode generated sequences into text
+        generated_texts = self.tokenizer.batch_decode(generated_ids, skip_special_tokens=True)
         edited_endings = [str(ee) for ee in batch['edited_ending']]
 
-        # Append validation details for CSV logging later
+        # (Optional) Calculate validation loss using the same method as training
+        # Note: Since we don't have rewards in validation, you might skip loss computation
+        val_loss = None  # Or compute if necessary
+
+        # Collect validation details for logging
         validation_details = [{
             'Epoch': self.current_epoch,
             'Premise': premise,
@@ -159,16 +156,19 @@ class FlanT5FineTuner(pl.LightningModule):
             'Edited Ending': edited_ending,
             'Generated Text': generated_text,
         } for premise, initial, counterfactual, original_ending, edited_ending, generated_text
-        in zip(batch['premise'], batch['initial'], batch['counterfactual'], batch['original_ending'], batch['edited_ending'], generated_texts)]
+        in zip(batch['premise'], batch['initial'], batch['counterfactual'],
+            batch['original_ending'], batch['edited_ending'], generated_texts)]
 
-        # Collect validation details to log at the end of the epoch
         self.epoch_validation_details.extend(validation_details)
 
-        # Print for debugging purposes
+        # Debugging information
         print(f"Validation step completed for batch {batch_idx}")
         print(f"Validation details: {validation_details}")
 
-        return val_loss
+        # You can log metrics if needed
+        # self.log('val_loss', val_loss, on_step=False, on_epoch=True, prog_bar=True, logger=True)
+
+        return val_loss  # Or return None if not computing loss
 
     def on_validation_epoch_end(self, test_flag=False):
         """
