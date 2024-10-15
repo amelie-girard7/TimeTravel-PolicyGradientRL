@@ -2,7 +2,6 @@ import csv
 import logging
 import os
 import torch
-import torch.nn.functional as F
 from transformers import T5ForConditionalGeneration, T5Config, T5Tokenizer
 import pytorch_lightning as pl
 from pathlib import Path
@@ -27,7 +26,11 @@ class FlanT5FineTuner(pl.LightningModule):
         model_dir = Path(model_dir)
 
         # Load the configuration for the model with output_attentions
-        config = T5Config.from_pretrained(model_name, output_attentions=CONFIG["output_attentions"])
+        config = T5Config.from_pretrained(
+            model_name,
+            output_attentions=CONFIG["output_attentions"],
+            use_cache=False  # Important for gradient flow
+        )
 
         # Initialize the T5 model and tokenizer with the specified configuration
         self.model = T5ForConditionalGeneration.from_pretrained(model_name, config=config)
@@ -37,82 +40,68 @@ class FlanT5FineTuner(pl.LightningModule):
         self.val_csv_file_path = model_dir / "validation_details.csv"
         self.test_csv_file_path = model_dir / "test_details.csv"
 
-        # Initialize the list to store validation step outputs for aggregating results over an epoch
+        # Initialize lists to store validation details
         self.current_val_step_outputs = []
-        
-        # Initialize a list to store detailed validation information for logging purposes
         self.epoch_validation_details = []
 
     def forward(self, input_ids, attention_mask):
-        # Generate sequences with gradient tracking
+        # Generate sequences with gradient tracking and obtain scores
         outputs = self.model.generate(
             input_ids=input_ids,
             attention_mask=attention_mask,
             max_length=CONFIG["max_gen_length"],
             num_beams=1,
             do_sample=True,  # Ensure randomness for exploration
-            output_scores=False,
-            return_dict_in_generate=False,
+            output_scores=True,               # Return scores (logits)
+            return_dict_in_generate=True,     # Return full output including logits
+            use_cache=False,                  # Important for gradient flow
+            output_attentions=CONFIG["output_attentions"],
+            output_hidden_states=True,        # Include hidden states for gradient flow
         )
-        return outputs  # Returns generated_ids
+        return outputs  # Returns a dict with 'sequences' and 'scores'
   
     def training_step(self, batch, batch_idx):
         input_ids = batch['input_ids']
         attention_mask = batch['attention_mask']
-        device = input_ids.device
 
-        # Step 1: Generate sequences (y) with gradient tracking
-        generated_ids = self.forward(input_ids, attention_mask)
-        batch_size = input_ids.size(0)
+        # Step 1: Generate sequences and obtain scores
+        outputs = self.forward(input_ids, attention_mask)
+        generated_ids = outputs.sequences  # Shape: [batch_size, seq_len_generated]
+        scores = outputs.scores  # List of tensors, each shape [batch_size, vocab_size]
 
-        # Decode generated sequences into text for reward calculation
+        # Verify that scores require gradients
+        for idx, score in enumerate(scores):
+            if not score.requires_grad:
+                score.retain_grad()
+
+        # Step 2: Compute log probabilities of the generated tokens
+        token_log_probs = []
+        for idx, score in enumerate(scores):
+            # Compute log_softmax over the vocabulary for time step idx
+            log_probs = torch.nn.functional.log_softmax(score, dim=-1)  # Shape: [batch_size, vocab_size]
+
+            # Get the token IDs generated at time step idx+1
+            # (since scores correspond to tokens generated after the current one)
+            token_ids = generated_ids[:, idx + 1]  # Shape: [batch_size]
+
+            # Gather log probabilities of the generated tokens
+            token_log_prob = log_probs.gather(dim=-1, index=token_ids.unsqueeze(-1)).squeeze(-1)
+            token_log_probs.append(token_log_prob)
+
+        # Stack and sum log probabilities
+        token_log_probs = torch.stack(token_log_probs, dim=1)  # Shape: [batch_size, seq_len_generated - 1]
+        sequence_log_probs = token_log_probs.sum(dim=1)        # Shape: [batch_size]
+
+        # Step 3: Calculate rewards based on generated texts
         generated_texts = self.tokenizer.batch_decode(generated_ids, skip_special_tokens=True)
         edited_endings = [str(ee) for ee in batch['edited_ending']]
 
-        # Step 2: Calculate rewards based on generated texts
         metrics_evaluator = MetricsEvaluator()
         rewards = metrics_evaluator.calculate_reward(generated_texts, edited_endings)
         rewards = rewards - CONFIG["baseline_score"]
-        rewards = rewards.to(device)
         rewards = rewards.detach()  # Detach rewards as they are not differentiable
 
-        # Step 3: Compute log probabilities of the generated sequences (log_prob(y))
-        # Prepare labels and decoder inputs by shifting generated_ids
-        labels = generated_ids[:, 1:].contiguous()
-        decoder_input_ids = generated_ids[:, :-1].contiguous()
-
-        # Forward pass to get logits connected to the computation graph
-        outputs = self.model(
-            input_ids=input_ids,
-            attention_mask=attention_mask,
-            decoder_input_ids=decoder_input_ids,
-            use_cache=False,
-            return_dict=True,
-        )
-        logits = outputs.logits  # Shape: [batch_size, seq_len, vocab_size]
-
-        # Compute log probabilities over the vocabulary
-        log_probs = torch.log_softmax(logits, dim=-1)
-
-        # Step 4: Gather log probabilities corresponding to generated tokens
-        vocab_size = logits.size(-1)
-        labels_for_indexing = labels.clone()
-        labels_for_indexing[labels_for_indexing >= vocab_size] = 0
-        labels_for_indexing[labels_for_indexing < 0] = 0
-
-        # Gather the log probabilities of the generated tokens
-        token_log_probs = log_probs.gather(dim=-1, index=labels_for_indexing.unsqueeze(-1)).squeeze(-1)
-
-        # Create a mask to ignore padding tokens in the loss computation
-        padding_mask = labels != self.tokenizer.pad_token_id
-
-        # Apply the padding mask to token_log_probs
-        token_log_probs = token_log_probs * padding_mask.float()
-
-        # Sum log probabilities over the sequence length to get log_prob(y)
-        sequence_log_probs = token_log_probs.sum(dim=1)
-
-        # Step 5: Compute the policy gradient loss
+        # Step 4: Compute the policy gradient loss
         loss = -torch.mean(rewards * sequence_log_probs)
 
         # Log training metrics
@@ -123,30 +112,26 @@ class FlanT5FineTuner(pl.LightningModule):
 
     def validation_step(self, batch, batch_idx):
         """
-        Executes a validation step and logs validation metrics.
-
-        Args:
-            batch (dict): A batch of validation data.
-
-        Returns:
-            tensor: Validation loss (optional).
+        Executes a validation step and logs evaluation metrics.
         """
         input_ids = batch['input_ids']
         attention_mask = batch['attention_mask']
-        device = input_ids.device
 
         # Generate sequences using self.forward()
-        generated_ids = self.forward(input_ids, attention_mask)
-
-        # Decode generated sequences into text
+        outputs = self.forward(input_ids, attention_mask)
+        generated_ids = outputs.sequences
         generated_texts = self.tokenizer.batch_decode(generated_ids, skip_special_tokens=True)
+
+        # Compute evaluation metrics
         edited_endings = [str(ee) for ee in batch['edited_ending']]
+        metrics_evaluator = MetricsEvaluator()
+        rewards = metrics_evaluator.calculate_reward(generated_texts, edited_endings)
+        avg_reward = rewards.mean().item()
 
-        # (Optional) Calculate validation loss using the same method as training
-        # Note: Since we don't have rewards in validation, you might skip loss computation
-        val_loss = None  # Or compute if necessary
+        # Log the average reward
+        self.log('val_avg_reward', avg_reward, on_step=False, on_epoch=True, prog_bar=True, logger=True)
 
-        # Collect validation details for logging
+        # Collect validation details
         validation_details = [{
             'Epoch': self.current_epoch,
             'Premise': premise,
@@ -155,9 +140,10 @@ class FlanT5FineTuner(pl.LightningModule):
             'Original Ending': original_ending,
             'Edited Ending': edited_ending,
             'Generated Text': generated_text,
-        } for premise, initial, counterfactual, original_ending, edited_ending, generated_text
+            'Reward': reward.item(),
+        } for premise, initial, counterfactual, original_ending, edited_ending, generated_text, reward
         in zip(batch['premise'], batch['initial'], batch['counterfactual'],
-            batch['original_ending'], batch['edited_ending'], generated_texts)]
+               batch['original_ending'], batch['edited_ending'], generated_texts, rewards)]
 
         self.epoch_validation_details.extend(validation_details)
 
@@ -165,20 +151,12 @@ class FlanT5FineTuner(pl.LightningModule):
         print(f"Validation step completed for batch {batch_idx}")
         print(f"Validation details: {validation_details}")
 
-        # You can log metrics if needed
-        # self.log('val_loss', val_loss, on_step=False, on_epoch=True, prog_bar=True, logger=True)
-
-        return val_loss  # Or return None if not computing loss
-
-    def on_validation_epoch_end(self, test_flag=False):
+    def on_validation_epoch_end(self):
         """
         Handles operations at the end of each validation epoch.
-        Saves the results to CSV and cleans up temporary data.
         """
-        print(f"Epoch validation details: {self.epoch_validation_details}")  # Debug print
-
-        # Determine CSV path based on test_flag (whether this is validation or test)
-        csv_file_path = self.determine_csv_path(test_flag)
+        # Determine CSV path
+        csv_file_path = self.val_csv_file_path
         
         # Log validation details to CSV if available
         if self.epoch_validation_details:
@@ -188,45 +166,20 @@ class FlanT5FineTuner(pl.LightningModule):
             logger.info("No validation details available for logging.")
             print("No validation details available for logging.")
 
-        # Clean up stored data for the next epoch
+        # Clean up for the next epoch
         self.cleanup_epoch_data()
 
     def test_step(self, batch, batch_idx):
         """
         Executes a test step by reusing validation logic.
-
-        Args:
-            batch (dict): A batch of test data.
-            batch_idx (int): Index of the batch.
-
-        Returns:
-            tensor: Validation (test) loss.
         """
         return self.validation_step(batch, batch_idx)
     
     def on_test_epoch_end(self):
         """
-        Handles the end of the test epoch by calling the validation end logic and saving test results.
+        Handles the end of the test epoch by calling the validation end logic.
         """
-        return self.on_validation_epoch_end(test_flag=True)
-
-    def generate_text(self, input_ids, attention_mask):
-        """
-        Generates text sequences based on input_ids and attention_mask.
-        """
-        # Generate text sequences
-        generated_ids = self.model.generate(
-            input_ids=input_ids, 
-            attention_mask=attention_mask, 
-            max_length=CONFIG["max_gen_length"],
-        )
-        # Decode generated sequences into text
-        generated_texts = [
-            self.tokenizer.decode(generated_id, skip_special_tokens=True, clean_up_tokenization_spaces=True)
-            for generated_id in generated_ids
-        ]
-        # Return generated texts 
-        return generated_texts
+        return self.on_validation_epoch_end()
 
     def determine_csv_path(self, test_flag):
         """
