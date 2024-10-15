@@ -42,26 +42,28 @@ class FlanT5FineTuner(pl.LightningModule):
         
         # Initialize a list to store detailed validation information for logging purposes
         self.epoch_validation_details = []
+
+    def forward(self, input_ids, attention_mask):
+        # Generate sequences with gradient tracking
+        outputs = self.model.generate(
+            input_ids=input_ids,
+            attention_mask=attention_mask,
+            max_length=CONFIG["max_gen_length"],
+            num_beams=1,
+            do_sample=True,  # Ensure randomness for exploration
+            output_scores=False,
+            return_dict_in_generate=False,
+        )
+        return outputs  # Returns generated_ids
   
     def training_step(self, batch, batch_idx):
-        # Unpack inputs from the batch
-        input_ids = batch['input_ids']  # Shape: [batch_size, seq_len]
-        attention_mask = batch['attention_mask']  # Shape: [batch_size, seq_len]
+        input_ids = batch['input_ids']
+        attention_mask = batch['attention_mask']
         device = input_ids.device
 
+        # Step 1: Generate sequences (y) with gradient tracking
+        generated_ids = self.forward(input_ids, attention_mask)
         batch_size = input_ids.size(0)
-
-        # Step 1: Generate sequences (y) without tracking gradients
-        with torch.no_grad():
-            generated_ids = self.model.generate(
-                input_ids=input_ids,
-                attention_mask=attention_mask,
-                max_length=CONFIG["max_gen_length"],
-                num_beams=1,
-                do_sample=True,  # Ensure randomness for exploration
-                output_scores=False,  # Not needed since we recompute logits
-                return_dict_in_generate=False
-            )
 
         # Decode generated sequences into text for reward calculation
         generated_texts = self.tokenizer.batch_decode(generated_ids, skip_special_tokens=True)
@@ -70,57 +72,47 @@ class FlanT5FineTuner(pl.LightningModule):
         # Step 2: Calculate rewards based on generated texts
         metrics_evaluator = MetricsEvaluator()
         rewards = metrics_evaluator.calculate_reward(generated_texts, edited_endings)
-        rewards = rewards - CONFIG["baseline_score"]  # Adjust rewards by baseline score
+        rewards = rewards - CONFIG["baseline_score"]
         rewards = rewards.to(device)
-
-        # Detach rewards from the computation graph (since they are not differentiable)
-        rewards = rewards.detach()
+        rewards = rewards.detach()  # Detach rewards as they are not differentiable
 
         # Step 3: Compute log probabilities of the generated sequences (log_prob(y))
         # Prepare labels and decoder inputs by shifting generated_ids
-        labels = generated_ids[:, 1:].contiguous()  # Exclude the first token (shifted left)
-        decoder_input_ids = generated_ids[:, :-1].contiguous()  # Exclude the last token (shifted right)
+        labels = generated_ids[:, 1:].contiguous()
+        decoder_input_ids = generated_ids[:, :-1].contiguous()
 
         # Forward pass to get logits connected to the computation graph
         outputs = self.model(
             input_ids=input_ids,
             attention_mask=attention_mask,
             decoder_input_ids=decoder_input_ids,
-            use_cache=False,  # Disable cache for training
+            use_cache=False,
             return_dict=True,
         )
         logits = outputs.logits  # Shape: [batch_size, seq_len, vocab_size]
 
         # Compute log probabilities over the vocabulary
-        log_probs = torch.log_softmax(logits, dim=-1)  # Shape: [batch_size, seq_len, vocab_size]
+        log_probs = torch.log_softmax(logits, dim=-1)
 
         # Step 4: Gather log probabilities corresponding to generated tokens
-        # Ensure labels are valid indices within [0, vocab_size - 1]
         vocab_size = logits.size(-1)
         labels_for_indexing = labels.clone()
-
-        # Replace any invalid indices (e.g., padding tokens) with 0 to prevent indexing errors
         labels_for_indexing[labels_for_indexing >= vocab_size] = 0
         labels_for_indexing[labels_for_indexing < 0] = 0
 
         # Gather the log probabilities of the generated tokens
         token_log_probs = log_probs.gather(dim=-1, index=labels_for_indexing.unsqueeze(-1)).squeeze(-1)
-        # token_log_probs shape: [batch_size, seq_len]
 
         # Create a mask to ignore padding tokens in the loss computation
-        padding_mask = labels != self.tokenizer.pad_token_id  # Shape: [batch_size, seq_len]
+        padding_mask = labels != self.tokenizer.pad_token_id
 
         # Apply the padding mask to token_log_probs
         token_log_probs = token_log_probs * padding_mask.float()
 
         # Sum log probabilities over the sequence length to get log_prob(y)
-        sequence_log_probs = token_log_probs.sum(dim=1)  # Shape: [batch_size]
+        sequence_log_probs = token_log_probs.sum(dim=1)
 
         # Step 5: Compute the policy gradient loss
-        # Ensure rewards and sequence_log_probs have the same shape
-        assert rewards.shape == sequence_log_probs.shape, "Mismatch between rewards and sequence_log_probs sizes."
-
-        # Compute the loss as the negative expected reward
         loss = -torch.mean(rewards * sequence_log_probs)
 
         # Log training metrics
@@ -128,7 +120,6 @@ class FlanT5FineTuner(pl.LightningModule):
         self.log('train_reward', rewards.mean(), on_step=True, on_epoch=True, prog_bar=True, logger=True)
 
         return loss
-
 
     def validation_step(self, batch, batch_idx):
         """
