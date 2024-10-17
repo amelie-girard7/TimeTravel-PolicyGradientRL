@@ -2,12 +2,14 @@ import csv
 import logging
 import os
 import torch
+import torch.nn.functional as F
 from transformers import T5ForConditionalGeneration, T5Config, T5Tokenizer
 import pytorch_lightning as pl
 from pathlib import Path
 from src.utils.config import CONFIG
 from src.utils.metrics import MetricsEvaluator
 
+# Initialize a logger
 logger = logging.getLogger(__name__)
 
 class FlanT5FineTuner(pl.LightningModule):
@@ -25,167 +27,210 @@ class FlanT5FineTuner(pl.LightningModule):
         # Ensure model_dir is a Path object
         model_dir = Path(model_dir)
 
-        # Load the configuration for the model with output_attentions
+        # Load the T5 model with the configuration, ensuring no attention is returned
         config = T5Config.from_pretrained(
             model_name,
-            output_attentions=CONFIG["output_attentions"],
-            use_cache=False  # Important for gradient flow
+            output_attentions=CONFIG["output_attentions"]  # Ensure attentions are not returned unless required
         )
 
         # Initialize the T5 model and tokenizer with the specified configuration
         self.model = T5ForConditionalGeneration.from_pretrained(model_name, config=config)
         self.tokenizer = T5Tokenizer.from_pretrained(model_name)
-        
-        # Set file paths for saving validation and test details as CSV files
+
+        # File paths for saving validation and test details
         self.val_csv_file_path = model_dir / "validation_details.csv"
         self.test_csv_file_path = model_dir / "test_details.csv"
 
-        # Initialize lists to store validation details
+        # Store validation step outputs for aggregation
         self.current_val_step_outputs = []
         self.epoch_validation_details = []
 
-    def forward(self, input_ids, attention_mask):
-        # Generate sequences with gradient tracking and obtain scores
-        outputs = self.model.generate(
-            input_ids=input_ids,
-            attention_mask=attention_mask,
-            max_length=CONFIG["max_gen_length"],
-            num_beams=1,
-            do_sample=True,  # Ensure randomness for exploration
-            output_scores=True,               # Return scores (logits)
-            return_dict_in_generate=True,     # Return full output including logits
-            use_cache=False,                  # Important for gradient flow
-            output_attentions=CONFIG["output_attentions"],
-            output_hidden_states=True,        # Include hidden states for gradient flow
-        )
-        return outputs  # Returns a dict with 'sequences' and 'scores'
-  
+    def forward(self, input_ids, attention_mask, labels=None):
+        """
+        Forward pass using the T5 model.
+        If labels are provided, it calculates the loss (MLE loss); 
+        otherwise, it returns generated tokens and logits.
+        """
+        print(f"\n[Forward Step] Input IDs shape: {input_ids.shape}")
+        print(f"[Forward Step] Attention Mask shape: {attention_mask.shape}")
+        
+        if labels is not None:
+            # If labels are provided, the model will calculate the MLE loss internally.
+            outputs = self.model(
+                input_ids=input_ids,
+                attention_mask=attention_mask,
+                labels=labels,  # T5 model computes MLE loss if labels are passed
+                output_attentions=False
+            )
+            print(f"[Forward Step] Model is calculating loss internally.")
+            return outputs
+        else:
+            # If no labels, generate tokens using the model and return logits
+            outputs = self.model.generate(
+                input_ids=input_ids,
+                attention_mask=attention_mask,
+                max_length=CONFIG['max_gen_length'],  # Max length for generated text
+                num_beams=1,  # Greedy decoding
+                output_scores=True,  # Return logits (scores) from the model
+                return_dict_in_generate=True  # Return full output (sequences + logits)
+            )
+            
+            generated_tokens = outputs.sequences
+            logits = outputs.scores  # Logits for each token generated
+            
+            print(f"[Forward Step] Generated tokens shape: {generated_tokens.shape}")
+            print(f"[Forward Step] Logits (scores) length: {len(logits)}")
+            print(f"[Forward Step] Logits[0] shape (one step logits): {logits[0].shape}")
+            
+            return generated_tokens, logits
+
     def training_step(self, batch, batch_idx):
+        """
+        Training step to use either MLE Loss or Policy Gradient Loss based on the config.
+        """
+        print(f"\n[Training Step] Batch Index: {batch_idx}")
+        
         input_ids = batch['input_ids']
         attention_mask = batch['attention_mask']
+        labels = batch['labels']
+        
+        print(f"[Training Step] Input IDs shape: {input_ids.shape}")
+        print(f"[Training Step] Attention Mask shape: {attention_mask.shape}")
 
-        # Step 1: Generate sequences and obtain scores
-        outputs = self.forward(input_ids, attention_mask)
-        generated_ids = outputs.sequences  # Shape: [batch_size, seq_len_generated]
-        scores = outputs.scores  # List of tensors, each shape [batch_size, vocab_size]
+        if CONFIG["use_policy_gradient"]:
+            # ---- POLICY GRADIENT LOSS ----
+            generated_tokens, logits = self.forward(input_ids=input_ids, attention_mask=attention_mask)
+            
+            # Decode the generated sequences into text
+            generated_texts = self.tokenizer.batch_decode(generated_tokens, skip_special_tokens=True)
+            edited_endings = [str(ee) for ee in batch['edited_ending']]
+            
+            # Calculate rewards based on generated texts
+            metrics_evaluator = MetricsEvaluator()
+            rewards = metrics_evaluator.calculate_reward(generated_texts, edited_endings)
+            rewards = rewards - CONFIG["baseline_score"]  # Adjust by baseline score
+                       
+            # Compute log probabilities for the generated tokens
+            labels_for_indexing = generated_tokens[:, 1:].contiguous()  # Exclude the first token (start token)
+           
+            # print here the shape
+            logits = torch.stack(logits, dim=1)  # Stack logits along the sequence dimension
+            # print here the shape
+            print("logit shape", logits.shape)
+            logits = torch.log_softmax(logits,dim=-1)
 
-        # Verify that scores require gradients
-        for idx, score in enumerate(scores):
-            if not score.requires_grad:
-                score.retain_grad()
+            token_log_probs = logits.gather(dim=-1, index=labels_for_indexing.unsqueeze(-1)).squeeze(-1)
+            # Create a mask to ignore padding tokens
+            padding_mask = labels_for_indexing != self.tokenizer.pad_token_id
+            token_log_probs = token_log_probs * padding_mask.float()
+            
+            # Sum log probabilities across the sequence
+            sequence_log_prob_sum = token_log_probs.sum(dim=1)
+            
+            # Compute policy gradient loss
+            loss = -(rewards * sequence_log_prob_sum)
+            print("Loss shape 1" ,loss.shape)
+            loss = loss.mean()  # Optimizer expects scalar loss
+            print("Loss shape 2" ,loss)
 
-        # Step 2: Compute log probabilities of the generated tokens
-        token_log_probs = []
-        for idx, score in enumerate(scores):
-            # Compute log_softmax over the vocabulary for time step idx
-            log_probs = torch.nn.functional.log_softmax(score, dim=-1)  # Shape: [batch_size, vocab_size]
+        else:
+            # ---- MLE LOSS ----
+            # Let the T5 model handle the MLE loss internally
+            outputs = self.forward(input_ids=input_ids, attention_mask=attention_mask, labels=labels)
+            loss = outputs.loss  # T5 internally computes the MLE (cross-entropy) loss
 
-            # Get the token IDs generated at time step idx+1
-            # (since scores correspond to tokens generated after the current one)
-            token_ids = generated_ids[:, idx + 1]  # Shape: [batch_size]
+            print(f"[Training Step] MLE Loss: {loss}")
 
-            # Gather log probabilities of the generated tokens
-            token_log_prob = log_probs.gather(dim=-1, index=token_ids.unsqueeze(-1)).squeeze(-1)
-            token_log_probs.append(token_log_prob)
-
-        # Stack and sum log probabilities
-        token_log_probs = torch.stack(token_log_probs, dim=1)  # Shape: [batch_size, seq_len_generated - 1]
-        sequence_log_probs = token_log_probs.sum(dim=1)        # Shape: [batch_size]
-
-        # Step 3: Calculate rewards based on generated texts
-        generated_texts = self.tokenizer.batch_decode(generated_ids, skip_special_tokens=True)
-        edited_endings = [str(ee) for ee in batch['edited_ending']]
-
-        metrics_evaluator = MetricsEvaluator()
-        rewards = metrics_evaluator.calculate_reward(generated_texts, edited_endings)
-        rewards = rewards - CONFIG["baseline_score"]
-        rewards = rewards.detach()  # Detach rewards as they are not differentiable
-
-        # Step 4: Compute the policy gradient loss
-        loss = -torch.mean(rewards * sequence_log_probs)
-
-        # Log training metrics
+        # Log the loss (and reward if policy gradient is used)
         self.log('train_loss', loss, on_step=True, on_epoch=True, prog_bar=True, logger=True)
-        self.log('train_reward', rewards.mean(), on_step=True, on_epoch=True, prog_bar=True, logger=True)
+        
+        if CONFIG["use_policy_gradient"]:
+            self.log('train_reward', rewards.mean(), on_step=True, on_epoch=True, prog_bar=True, logger=True)
 
         return loss
 
     def validation_step(self, batch, batch_idx):
         """
-        Executes a validation step and logs evaluation metrics.
+        Validation step to use either MLE Loss or Policy Gradient Loss based on the config.
         """
+        print(f"\n[Validation Step] Batch Index: {batch_idx}")
+
         input_ids = batch['input_ids']
         attention_mask = batch['attention_mask']
-
-        # Generate sequences using self.forward()
-        outputs = self.forward(input_ids, attention_mask)
-        generated_ids = outputs.sequences
-        generated_texts = self.tokenizer.batch_decode(generated_ids, skip_special_tokens=True)
-
-        # Compute evaluation metrics
-        edited_endings = [str(ee) for ee in batch['edited_ending']]
-        metrics_evaluator = MetricsEvaluator()
-        rewards = metrics_evaluator.calculate_reward(generated_texts, edited_endings)
-        avg_reward = rewards.mean().item()
-
-        # Log the average reward
-        self.log('val_avg_reward', avg_reward, on_step=False, on_epoch=True, prog_bar=True, logger=True)
-
-        # Collect validation details
-        validation_details = [{
-            'Epoch': self.current_epoch,
-            'Premise': premise,
-            'Initial': initial,
-            'Counterfactual': counterfactual,
-            'Original Ending': original_ending,
-            'Edited Ending': edited_ending,
-            'Generated Text': generated_text,
-            'Reward': reward.item(),
-        } for premise, initial, counterfactual, original_ending, edited_ending, generated_text, reward
-        in zip(batch['premise'], batch['initial'], batch['counterfactual'],
-               batch['original_ending'], batch['edited_ending'], generated_texts, rewards)]
-
-        self.epoch_validation_details.extend(validation_details)
-
-        # Debugging information
-        print(f"Validation step completed for batch {batch_idx}")
-        print(f"Validation details: {validation_details}")
-
-    def on_validation_epoch_end(self):
-        """
-        Handles operations at the end of each validation epoch.
-        """
-        # Determine CSV path
-        csv_file_path = self.val_csv_file_path
+        labels = batch['labels']
         
-        # Log validation details to CSV if available
-        if self.epoch_validation_details:
-            print(f"Logging validation details to {csv_file_path}")
-            self.log_to_csv(csv_file_path, self.epoch_validation_details)
-        else:
-            logger.info("No validation details available for logging.")
-            print("No validation details available for logging.")
+        print(f"[Validation Step] Input IDs shape: {input_ids.shape}")
+        print(f"[Validation Step] Attention Mask shape: {attention_mask.shape}")
 
-        # Clean up for the next epoch
+        if CONFIG["use_policy_gradient"]:
+            # ---- POLICY GRADIENT LOSS ----
+            generated_tokens, logits = self.forward(input_ids=input_ids, attention_mask=attention_mask)
+            
+            # Decode the generated sequences into text
+            generated_texts = self.tokenizer.batch_decode(generated_tokens, skip_special_tokens=True)
+            edited_endings = [str(ee) for ee in batch['edited_ending']]
+            
+            # Calculate rewards based on generated texts
+            metrics_evaluator = MetricsEvaluator()
+            rewards = metrics_evaluator.calculate_reward(generated_texts, edited_endings)
+            rewards = rewards - CONFIG["baseline_score"]
+            rewards = rewards.detach()  # Detach rewards for validation (no backprop)
+
+            # Compute log probabilities for the generated tokens
+            labels_for_indexing = generated_tokens[:, 1:].contiguous()
+            logits = torch.stack(logits, dim=1)  # Stack logits along the sequence dimension
+            
+            token_log_probs = logits.gather(dim=-1, index=labels_for_indexing.unsqueeze(-1)).squeeze(-1)
+
+            # Create a mask to ignore padding tokens
+            padding_mask = labels_for_indexing != self.tokenizer.pad_token_id
+            token_log_probs = token_log_probs * padding_mask.float()
+
+            # Sum log probabilities across the sequence
+            sequence_log_prob_sum = token_log_probs.sum(dim=1)
+
+            # Compute policy gradient loss
+            val_loss = rewards * sequence_log_prob_sum
+            val_loss = val_loss.mean()  # Ensure scalar loss for logging
+
+            print(f"[Validation Step] Policy Gradient Loss: {val_loss}")
+
+        else:
+            # ---- MLE LOSS ----
+            # Let the T5 model handle the MLE loss internally
+            outputs = self.forward(input_ids=input_ids, attention_mask=attention_mask, labels=labels)
+            val_loss = outputs.loss  # Use T5's internal cross-entropy loss
+
+            print(f"[Validation Step] MLE Loss: {val_loss}")
+
+        # Log the validation loss
+        self.log('val_loss', val_loss, on_epoch=True, prog_bar=True, logger=True)
+
+        return val_loss
+
+    def on_validation_epoch_end(self, test_flag=False):
+        """
+        Handles operations at the end of the validation epoch.
+        """
+        # Determine CSV path based on test_flag (validation or test)
+        csv_file_path = self.test_csv_file_path if test_flag else self.val_csv_file_path
+
+        if self.epoch_validation_details:
+            # Log validation details to CSV
+            self.log_to_csv(csv_file_path, self.epoch_validation_details)
+
+        # Clean up stored data for the next epoch
         self.cleanup_epoch_data()
 
     def test_step(self, batch, batch_idx):
         """
-        Executes a test step by reusing validation logic.
+        Called during the testing loop to perform a forward pass with a batch from the test set, 
+        calculate the loss, and optionally generate text.
         """
         return self.validation_step(batch, batch_idx)
     
     def on_test_epoch_end(self):
-        """
-        Handles the end of the test epoch by calling the validation end logic.
-        """
-        return self.on_validation_epoch_end()
-
-    def determine_csv_path(self, test_flag):
-        """
-        Determines the CSV file path based on whether this is a validation or test step.
-        """
-        return self.test_csv_file_path if test_flag else self.val_csv_file_path
+        return self.on_validation_epoch_end(test_flag=True)
 
     def log_to_csv(self, csv_file_path, details):
         """
@@ -200,14 +245,12 @@ class FlanT5FineTuner(pl.LightningModule):
 
     def cleanup_epoch_data(self):
         """
-        Cleans up the data collected during the epoch.
+        Cleans up data collected during the epoch.
         """
         self.epoch_validation_details.clear()
-        self.current_val_step_outputs.clear()
 
     def configure_optimizers(self):
         """
         Configures the optimizer for the model using AdamW.
         """
-        lr = CONFIG["learning_rate"]
-        return torch.optim.AdamW(self.parameters(), lr=lr)
+        return torch.optim.AdamW(self.parameters(), lr=CONFIG["learning_rate"])
