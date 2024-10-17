@@ -112,11 +112,8 @@ class FlanT5FineTuner(pl.LightningModule):
                        
             # Compute log probabilities for the generated tokens
             labels_for_indexing = generated_tokens[:, 1:].contiguous()  # Exclude the first token (start token)
-           
-            # print here the shape
+
             logits = torch.stack(logits, dim=1)  # Stack logits along the sequence dimension
-            # print here the shape
-            print("logit shape", logits.shape)
             logits = torch.log_softmax(logits,dim=-1)
 
             token_log_probs = logits.gather(dim=-1, index=labels_for_indexing.unsqueeze(-1)).squeeze(-1)
@@ -129,9 +126,7 @@ class FlanT5FineTuner(pl.LightningModule):
             
             # Compute policy gradient loss
             loss = -(rewards * sequence_log_prob_sum)
-            print("Loss shape 1" ,loss.shape)
             loss = loss.mean()  # Optimizer expects scalar loss
-            print("Loss shape 2" ,loss)
 
         else:
             # ---- MLE LOSS ----
@@ -180,6 +175,8 @@ class FlanT5FineTuner(pl.LightningModule):
             labels_for_indexing = generated_tokens[:, 1:].contiguous()
             logits = torch.stack(logits, dim=1)  # Stack logits along the sequence dimension
             
+            logits = torch.log_softmax(logits,dim=-1)
+
             token_log_probs = logits.gather(dim=-1, index=labels_for_indexing.unsqueeze(-1)).squeeze(-1)
 
             # Create a mask to ignore padding tokens
@@ -190,7 +187,7 @@ class FlanT5FineTuner(pl.LightningModule):
             sequence_log_prob_sum = token_log_probs.sum(dim=1)
 
             # Compute policy gradient loss
-            val_loss = rewards * sequence_log_prob_sum
+            val_loss = -(rewards * sequence_log_prob_sum)
             val_loss = val_loss.mean()  # Ensure scalar loss for logging
 
             print(f"[Validation Step] Policy Gradient Loss: {val_loss}")
