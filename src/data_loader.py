@@ -73,12 +73,16 @@ def create_dataloaders(data_path, tokenizer, batch_size, num_workers):
         # Create an instance of the dataset for each data file
         dataset = CustomJSONDataset(file_path, tokenizer)
 
+        # Determine whether to shuffle: shuffle only for training
+        shuffle = file_name == CONFIG["train_file"]
+
         # Create a DataLoader for each dataset
         dataloader = DataLoader(
             dataset,
             batch_size=batch_size,
             collate_fn=lambda batch: collate_fn(batch, pad_token_id=tokenizer.pad_token_id),
             num_workers=num_workers,
+            shuffle=shuffle  # Shuffle data only for training
         )
 
         # Use the file name (without extension) as the key
