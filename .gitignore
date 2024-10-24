@@ -165,3 +165,5 @@ results/
 
 # Ignore 'data/' directory in the root and all subdirectories
 data/
+
+/wandb/

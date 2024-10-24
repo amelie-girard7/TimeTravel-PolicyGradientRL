@@ -9,6 +9,8 @@ from transformers import T5Tokenizer
 from pytorch_lightning import Trainer
 from pytorch_lightning.callbacks import ModelCheckpoint
 from pytorch_lightning.loggers import TensorBoardLogger, CSVLogger
+import wandb
+from pytorch_lightning.loggers import WandbLogger
 from src.models.model_T5 import FlanT5FineTuner
 from src.data_loader import create_dataloaders
 from src.utils.config import CONFIG
@@ -48,32 +50,49 @@ def setup_dataloaders(model, tokenizer):
     dataloaders = create_dataloaders(data_path, tokenizer, batch_size, num_workers)
     return dataloaders
 
-def setup_trainer(model_dir):
+def setup_trainer(model,model_dir):
     """
     Configures the training environment, including checkpoints, logging, and GPU setup.
     """
     logger.info("Setting up the trainer...")
-    # Create a checkpoint callback to save the model with the lowest validation loss
-    checkpoint_callback = ModelCheckpoint(
-        dirpath=model_dir,
-        filename='checkpoint-{epoch:02d}-{val_loss:.2f}',
-        save_top_k=1,
-        monitor='val_loss',
-        mode='min',
-        verbose=True
+
+    # Initialize W&B logger
+    wandb_logger = WandbLogger(
+        project="counterfactual_story_rewriting",
+        entity="ACL-paper",  # Team 
+        log_model="all"
     )
 
-    # Set up loggers: TensorBoard and CSV logger
-    tensorboard_logger = TensorBoardLogger(save_dir=model_dir, name="training_logs")
-    csv_logger = CSVLogger(save_dir=model_dir, name="csv_logs")
+    # Log configuration parameters (CONFIG) to W&B
+    wandb_logger.experiment.config.update(CONFIG)
 
-    # Set up the PyTorch Lightning Trainer
+    # Watch the model to log gradients and weights (for tracking the computational graph)
+    wandb_logger.watch(model, log="all")
+
+    # Create checkpoint callbacks for both policy gradient loss and reward
+    checkpoint_loss_callback = ModelCheckpoint(
+        dirpath=model_dir,
+        every_n_train_steps=100,  
+        save_top_k=1,
+        monitor='validation_policy_gradient_loss',
+        mode='min',
+    )
+
+    checkpoint_reward_callback = ModelCheckpoint(
+        dirpath=model_dir,
+        every_n_train_steps=100,  
+        save_top_k=1,
+        monitor='validation_policy_gradient_reward',
+        mode='max',
+    )
+
+    # Set up the Trainer
     trainer = Trainer(
         max_epochs=CONFIG["max_epochs"],
-        accelerator='gpu',  # Use GPU if available
-        devices=1,  # Use a single GPU
-        callbacks=[checkpoint_callback],  # Attach checkpointing callback
-        logger=[tensorboard_logger, csv_logger],  # Attach loggers
+        accelerator='gpu',  
+        devices=1,
+        callbacks=[checkpoint_loss_callback, checkpoint_reward_callback],
+        logger=[wandb_logger],
     )
 
     return trainer
@@ -104,9 +123,9 @@ def main():
         dataloaders = setup_dataloaders(model, tokenizer)
 
         logger.info("Dataloaders created, about to set up the trainer...")
-        # Setup trainer
-        trainer = setup_trainer(model_dir)
-        
+        # Pass the model into setup_trainer
+        trainer = setup_trainer(model,model_dir)
+         
         # Extract the keys for train, dev, and test from CONFIG and remove the file extension
         train_key = CONFIG["train_file"].split('.')[0]  # 'train_supervised_small'
         dev_key = CONFIG["dev_file"].split('.')[0]      # 'dev_data'

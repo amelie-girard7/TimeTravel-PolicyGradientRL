@@ -5,6 +5,8 @@ import torch
 import torch.nn.functional as F
 from transformers import T5ForConditionalGeneration, T5Config, T5Tokenizer
 import pytorch_lightning as pl
+import wandb
+from pytorch_lightning.loggers import WandbLogger
 from pathlib import Path
 from src.utils.config import CONFIG
 from src.utils.metrics import MetricsEvaluator
@@ -51,25 +53,23 @@ class FlanT5FineTuner(pl.LightningModule):
         If labels are provided, it calculates the loss (MLE loss); 
         otherwise, it returns generated tokens and logits.
         """
-        print(f"\n[Forward Step] Input IDs shape: {input_ids.shape}")
-        print(f"[Forward Step] Attention Mask shape: {attention_mask.shape}")
         
         if labels is not None:
-            # If labels are provided, the model will calculate the MLE loss internally.
+            # If labels are provided and not using policy gradient, the model will calculate MLE loss internally.
+            # Otherwise, the model will generate text for policy gradient training or inference.
             outputs = self.model(
                 input_ids=input_ids,
                 attention_mask=attention_mask,
-                labels=labels,  # T5 model computes MLE loss if labels are passed
+                labels=labels, 
                 output_attentions=False
             )
-            print(f"[Forward Step] Model is calculating loss internally.")
             return outputs
         else:
             # If no labels, generate tokens using the model and return logits
             outputs = self.model.generate(
                 input_ids=input_ids,
                 attention_mask=attention_mask,
-                max_length=CONFIG['max_gen_length'],  # Max length for generated text
+                max_length=CONFIG['max_gen_length'], 
                 num_beams=1,  # Greedy decoding
                 output_scores=True,  # Return logits (scores) from the model
                 return_dict_in_generate=True  # Return full output (sequences + logits)
@@ -77,25 +77,16 @@ class FlanT5FineTuner(pl.LightningModule):
             
             generated_tokens = outputs.sequences
             logits = outputs.scores  # Logits for each token generated
-            
-            print(f"[Forward Step] Generated tokens shape: {generated_tokens.shape}")
-            print(f"[Forward Step] Logits (scores) length: {len(logits)}")
-            print(f"[Forward Step] Logits[0] shape (one step logits): {logits[0].shape}")
-            
+                       
             return generated_tokens, logits
 
     def training_step(self, batch, batch_idx):
         """
         Training step to use either MLE Loss or Policy Gradient Loss based on the config.
-        """
-        print(f"\n[Training Step] Batch Index: {batch_idx}")
-        
+        """        
         input_ids = batch['input_ids']
         attention_mask = batch['attention_mask']
         labels = batch['labels']
-        
-        print(f"[Training Step] Input IDs shape: {input_ids.shape}")
-        print(f"[Training Step] Attention Mask shape: {attention_mask.shape}")
 
         if CONFIG["use_policy_gradient"]:
             # ---- POLICY GRADIENT LOSS ----
@@ -114,48 +105,41 @@ class FlanT5FineTuner(pl.LightningModule):
             labels_for_indexing = generated_tokens[:, 1:].contiguous()  # Exclude the first token (start token)
 
             logits = torch.stack(logits, dim=1)  # Stack logits along the sequence dimension
-            logits = torch.log_softmax(logits,dim=-1)
-
+            logits = torch.log_softmax(logits,dim=-1) # Log softmax along the vocabulary axis
+            
             token_log_probs = logits.gather(dim=-1, index=labels_for_indexing.unsqueeze(-1)).squeeze(-1)
+            
             # Create a mask to ignore padding tokens
             padding_mask = labels_for_indexing != self.tokenizer.pad_token_id
             token_log_probs = token_log_probs * padding_mask.float()
             
             # Sum log probabilities across the sequence
             sequence_log_prob_sum = token_log_probs.sum(dim=1)
-            
+           
             # Compute policy gradient loss
-            loss = -(rewards * sequence_log_prob_sum)
-            loss = loss.mean()  # Optimizer expects scalar loss
+            loss = -(rewards * sequence_log_prob_sum).mean()
 
+            # Log rewards and loss for training step
+            self.log('policy_gradient_loss', loss, on_step=True, on_epoch=True, prog_bar=True, logger=True)
+            self.log('policy_gradient_reward', rewards.mean(), on_step=True, on_epoch=True, prog_bar=True, logger=True)        
         else:
             # ---- MLE LOSS ----
             # Let the T5 model handle the MLE loss internally
             outputs = self.forward(input_ids=input_ids, attention_mask=attention_mask, labels=labels)
             loss = outputs.loss  # T5 internally computes the MLE (cross-entropy) loss
-
-            print(f"[Training Step] MLE Loss: {loss}")
-
-        # Log the loss (and reward if policy gradient is used)
-        self.log('train_loss', loss, on_step=True, on_epoch=True, prog_bar=True, logger=True)
-        
-        if CONFIG["use_policy_gradient"]:
-            self.log('train_reward', rewards.mean(), on_step=True, on_epoch=True, prog_bar=True, logger=True)
+            
+            # Log the MLE loss for the training step
+            self.log('mle_loss', loss, on_step=True, on_epoch=True, prog_bar=True, logger=True)
 
         return loss
 
-    def validation_step(self, batch, batch_idx):
+    def validation_step(self, batch, batch_idx, phase="Validation"):
         """
         Validation step to use either MLE Loss or Policy Gradient Loss based on the config.
         """
-        print(f"\n[Validation Step] Batch Index: {batch_idx}")
-
         input_ids = batch['input_ids']
         attention_mask = batch['attention_mask']
         labels = batch['labels']
-        
-        print(f"[Validation Step] Input IDs shape: {input_ids.shape}")
-        print(f"[Validation Step] Attention Mask shape: {attention_mask.shape}")
 
         if CONFIG["use_policy_gradient"]:
             # ---- POLICY GRADIENT LOSS ----
@@ -171,12 +155,34 @@ class FlanT5FineTuner(pl.LightningModule):
             rewards = rewards - CONFIG["baseline_score"]
             rewards = rewards.detach()  # Detach rewards for validation (no backprop)
 
+            # Print the rewards and generated text for debugging
+            print(f"Generated texts: {generated_texts}")
+            print(f"Rewards: {rewards}")
+
+            # Append validation data
+            for i in range(len(generated_texts)):
+                validation_data = {
+                    "Epoch": self.current_epoch,
+                    "Premise": batch['premise'][i],
+                    "Initial": batch['initial'][i],
+                    "Counterfactual": batch['counterfactual'][i],
+                    "Original Ending": batch['original_ending'][i],
+                    "Edited Ending": batch['edited_ending'][i],
+                    "Generated Text": generated_texts[i],
+                    "Reward": rewards[i].item(),
+                }
+                self.epoch_validation_details.append(validation_data)
+
+
             # Compute log probabilities for the generated tokens
             labels_for_indexing = generated_tokens[:, 1:].contiguous()
-            logits = torch.stack(logits, dim=1)  # Stack logits along the sequence dimension
-            
-            logits = torch.log_softmax(logits,dim=-1)
+            # Stack the logits (which are in tuple form) into a tensor
+            logits = torch.stack(logits, dim=1)  # Ensure logits are stacked before applying log_softmax
 
+            # Apply log_softmax along the last dimension          
+            logits = torch.log_softmax(logits,dim=-1) # Now logits is a single tensor
+            
+            # Gather token log probabilities based on the generated tokens
             token_log_probs = logits.gather(dim=-1, index=labels_for_indexing.unsqueeze(-1)).squeeze(-1)
 
             # Create a mask to ignore padding tokens
@@ -187,58 +193,96 @@ class FlanT5FineTuner(pl.LightningModule):
             sequence_log_prob_sum = token_log_probs.sum(dim=1)
 
             # Compute policy gradient loss
-            val_loss = -(rewards * sequence_log_prob_sum)
-            val_loss = val_loss.mean()  # Ensure scalar loss for logging
+            loss = -(rewards * sequence_log_prob_sum).mean()
 
-            print(f"[Validation Step] Policy Gradient Loss: {val_loss}")
-
+            # Log policy gradient loss and rewards for validation
+            self.log(f'validation_policy_gradient_loss', loss, on_epoch=True, prog_bar=True, logger=True)
+            self.log(f'validation_policy_gradient_reward', rewards.mean(), on_epoch=True, prog_bar=True, logger=True)
+      
         else:
             # ---- MLE LOSS ----
             # Let the T5 model handle the MLE loss internally
             outputs = self.forward(input_ids=input_ids, attention_mask=attention_mask, labels=labels)
-            val_loss = outputs.loss  # Use T5's internal cross-entropy loss
+            loss = outputs.loss  # Use T5's internal cross-entropy loss
 
-            print(f"[Validation Step] MLE Loss: {val_loss}")
+            # Log the loss for the phase
+            self.log(f'validation_mle_loss', loss, on_epoch=True, prog_bar=True, logger=True)
+   
+        return loss
 
-        # Log the validation loss
-        self.log('val_loss', val_loss, on_epoch=True, prog_bar=True, logger=True)
+    def log_to_wandb(self, table_name, details):
+        """
+        Logs the validation or test results into a Weights and Biases (W&B) table.
+        """
+        # Define the columns for the W&B table
+        columns = [
+            "Epoch", "Premise", "Initial", "Counterfactual", "Original Ending",
+            "Edited Ending", "Generated Text", "Reward"
+        ]
+        
+        # Create a new W&B table with the specified columns
+        table = wandb.Table(columns=columns)
 
-        return val_loss
+        # Add each row of data to the W&B table
+        for row in details:
+            table.add_data(
+                row["Epoch"], row["Premise"], row["Initial"], row["Counterfactual"], 
+                row["Original Ending"], row["Edited Ending"], row["Generated Text"], row["Reward"]
+            )
+
+        # Log the table to W&B under the correct phase (validation or test)
+        wandb.log({f"{table_name}_{self.current_epoch}": table})
 
     def on_validation_epoch_end(self, test_flag=False):
         """
-        Handles operations at the end of the validation epoch.
+        Handles operations at the end of the validation or test epoch.
         """
-        # Determine CSV path based on test_flag (validation or test)
-        csv_file_path = self.test_csv_file_path if test_flag else self.val_csv_file_path
+        # Determine the table name based on whether this is validation or test
+        table_name = "test_data_epoch" if test_flag else "validation_data_epoch"
 
+        # Only log if there are details
         if self.epoch_validation_details:
-            # Log validation details to CSV
-            self.log_to_csv(csv_file_path, self.epoch_validation_details)
+            # Log the details to W&B
+            self.log_to_wandb(table_name, self.epoch_validation_details)
 
-        # Clean up stored data for the next epoch
+        # Clear the data after logging
         self.cleanup_epoch_data()
 
     def test_step(self, batch, batch_idx):
         """
-        Called during the testing loop to perform a forward pass with a batch from the test set, 
-        calculate the loss, and optionally generate text.
+        This method is called during the test loop and should mirror the validation step logic.
         """
-        return self.validation_step(batch, batch_idx)
-    
-    def on_test_epoch_end(self):
-        return self.on_validation_epoch_end(test_flag=True)
+        # Use the validation step logic for the test phase
+        return self.validation_step(batch, batch_idx, phase="Test")
 
-    def log_to_csv(self, csv_file_path, details):
+    def on_test_epoch_end(self):
         """
-        Logs the validation or test results into a CSV file.
+        Handles operations at the end of the test epoch.
         """
-        file_exists = os.path.isfile(csv_file_path)
-        with open(csv_file_path, 'a', newline='') as csvfile:
-            writer = csv.DictWriter(csvfile, fieldnames=details[0].keys())
-            if not file_exists:
-                writer.writeheader()
-            writer.writerows(details)
+        # Call on_validation_epoch_end with test_flag set to True to log test data
+        self.on_validation_epoch_end(test_flag=True)
+
+    def log_to_wandb(self, table_name, details):
+        """
+        Logs the validation or test results into a Weights and Biases (W&B) table.
+        """
+        # Define the columns for the W&B table
+        columns = [
+            "Epoch", "Premise", "Initial", "Counterfactual", "Original Ending",
+            "Edited Ending", "Generated Text", "Reward"
+        ]
+        # Create a new W&B table with the specified columns
+        table = wandb.Table(columns=columns)
+
+        # Add each row of validation data to the W&B table
+        for row in details:
+            table.add_data(
+                row["Epoch"], row["Premise"], row["Initial"], row["Counterfactual"], 
+                row["Original Ending"], row["Edited Ending"], row["Generated Text"], row["Reward"]
+            )
+
+        # Log the table to W&B
+        wandb.log({f"{table_name}_{self.current_epoch}": table})
 
     def cleanup_epoch_data(self):
         """
