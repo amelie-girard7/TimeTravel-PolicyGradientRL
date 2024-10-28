@@ -19,22 +19,24 @@ from src.utils.config import CONFIG
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+
 def setup_model(model_dir):
     """
-    Prepares the FlanT5FineTuner model for training. 
-    This includes loading from the provided checkpoint.
+    Initializes the T5 model. 
+    If `CONFIG["use_checkpoint"]` is True and `CONFIG["checkpoint_path"]` exists, load from that checkpoint.
+    Otherwise, download the model from Hugging Face.
     """
-    # Load the pre-trained model from the specified checkpoint if available
     checkpoint_path = CONFIG.get("checkpoint_path")
-    if checkpoint_path and os.path.exists(checkpoint_path):
+    
+    if CONFIG["use_checkpoint"] and checkpoint_path and os.path.exists(checkpoint_path):
         logger.info(f"Loading model from checkpoint: {checkpoint_path}")
         model = FlanT5FineTuner.load_from_checkpoint(
             checkpoint_path, model_name=CONFIG["model_name"], model_dir=model_dir
         )
     else:
-        logger.info(f"Initializing model from pre-trained: {CONFIG['model_name']}")
+        logger.info(f"No valid checkpoint found or requested. Initializing a fresh model: {CONFIG['model_name']}")
         model = FlanT5FineTuner(CONFIG["model_name"], model_dir)
-
+        
     return model
 
 def setup_dataloaders(model, tokenizer):
@@ -50,49 +52,66 @@ def setup_dataloaders(model, tokenizer):
     dataloaders = create_dataloaders(data_path, tokenizer, batch_size, num_workers)
     return dataloaders
 
-def setup_trainer(model,model_dir):
-    """
-    Configures the training environment, including checkpoints, logging, and GPU setup.
-    """
+def setup_trainer(model, model_dir):
     logger.info("Setting up the trainer...")
 
     # Initialize W&B logger
     wandb_logger = WandbLogger(
         project="counterfactual_story_rewriting",
-        entity="ACL-paper",  # Team 
+        entity="ACL-paper",  
         log_model="all"
     )
-
-    # Log configuration parameters (CONFIG) to W&B
     wandb_logger.experiment.config.update(CONFIG)
 
-    # Watch the model to log gradients and weights (for tracking the computational graph)
-    wandb_logger.watch(model, log="all")
+    # Dynamically choose checkpoint callbacks based on the training mode
+    if CONFIG["use_policy_gradient"]:
+        logger.info("Using policy gradient mode, setting up checkpoints for policy gradient.")
+        
+        # Create checkpoints for policy gradient loss and reward
+        checkpoint_loss_callback = ModelCheckpoint(
+            dirpath=model_dir, 
+            every_n_train_steps=100,
+            save_top_k=1,
+            monitor='validation_policy_gradient_loss',  # Monitor policy gradient loss
+            mode='min'
+        )
+        checkpoint_reward_mean_callback = ModelCheckpoint(
+            dirpath=model_dir,
+            every_n_train_steps=100,
+            save_top_k=1,# Only keep the best checkpoint
+            monitor='validation_policy_gradient_reward_mean',  # Monitor policy gradient reward
+            mode='max'
+        )
+        callbacks = [checkpoint_loss_callback, checkpoint_reward_mean_callback]
+    
+    else:
+        logger.info("Using MLE mode, setting up checkpoints for MLE loss.")
+        
+        # Create checkpoints for MLE loss
+        checkpoint_mle_loss_callback  = ModelCheckpoint(
+            dirpath=model_dir, 
+            every_n_train_steps=100,
+            save_top_k=1,
+            monitor='validation_mle_loss',  # Monitor MLE loss
+            mode='min'
+        )
+        checkpoint_mle_score_callback = ModelCheckpoint(
+            dirpath=model_dir,
+            every_n_train_steps=100,
+            save_top_k=1,
+            monitor='validation_mle_score_mean',  # Monitor MLE score mean
+            mode='max'
+        )
+        callbacks = [checkpoint_mle_loss_callback, checkpoint_mle_score_callback]
 
-    # Create checkpoint callbacks for both policy gradient loss and reward
-    checkpoint_loss_callback = ModelCheckpoint(
-        dirpath=model_dir,
-        every_n_train_steps=100,  
-        save_top_k=1,
-        monitor='validation_policy_gradient_loss',
-        mode='min',
-    )
-
-    checkpoint_reward_callback = ModelCheckpoint(
-        dirpath=model_dir,
-        every_n_train_steps=100,  
-        save_top_k=1,
-        monitor='validation_policy_gradient_reward',
-        mode='max',
-    )
-
-    # Set up the Trainer
+    # Set up the trainer with the selected callbacks
     trainer = Trainer(
-        max_epochs=CONFIG["max_epochs"],
+        max_epochs=CONFIG["max_epochs"], 
         accelerator='gpu',  
         devices=1,
-        callbacks=[checkpoint_loss_callback, checkpoint_reward_callback],
+        callbacks=callbacks,  # Use the dynamically selected callbacks
         logger=[wandb_logger],
+        val_check_interval=0.1
     )
 
     return trainer
