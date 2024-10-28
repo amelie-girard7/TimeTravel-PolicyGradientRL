@@ -17,13 +17,13 @@ CONFIG = {
     "results_dir": ROOT_DIR / "results",  # Directory to save the results
     
     # File names
-    #"train_file": "train_supervised_small_sample.json",
-    #"dev_file": "dev_data_sample.json",
-    #"test_file": "test_data_sample.json",
+    "train_file": "train_supervised_small_sample.json",
+    "dev_file": "dev_data_sample.json",
+    "test_file": "test_data_sample.json",
 
-    "train_file": "train_supervised_small.json",
-    "dev_file": "dev_data.json",
-    "test_file": "test_data.json",
+    #"train_file": "train_supervised_small.json",
+    #"dev_file": "dev_data.json",
+    #"test_file": "test_data.json",
     
     # Model and training configurations
     "model_name": os.getenv('MODEL_NAME', "google/flan-t5-base"),
@@ -62,7 +62,8 @@ CONFIG = {
     "output_attentions": False,  # Set this to True if you want the model to return attention weights
 
     # NEW FLAG: Toggle between MLE loss and Policy Gradient loss
-    "use_policy_gradient": True  # Set to True to use Policy Gradient Loss, False for MLE Loss
+    "use_policy_gradient": True,  # Set to True to use Policy Gradient Loss, False for MLE Loss
+    "use_checkpoint": False       # Set to True to load from checkpoint, False to download a new model
 }
 
 # Optionally, validate or create the directories
