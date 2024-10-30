@@ -1,0 +1,1 @@
+{"_runtime":240.529724173,"pg_train_loss_epoch":-1.5912271738052368,"_wandb":{"runtime":242},"_timestamp":1.7302627980423448e+09,"pg_train_reward_epoch":-0.2071428745985031,"_step":6,"trainer/global_step":3,"pg_val_loss":-1.8006834983825684,"epoch":3}

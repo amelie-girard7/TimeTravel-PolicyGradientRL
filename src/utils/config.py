@@ -10,7 +10,7 @@ BARTSCORE_DIR = ROOT_DIR / "src" / "BARTScore_metric"
 CONFIG = {
     # Paths relative to the root directory
     "root_dir": ROOT_DIR, 
-    "data_dir": ROOT_DIR / "data",
+    "data_dir": ROOT_DIR / "data" / "transformed",
     "models_dir": ROOT_DIR / "models",
     "logs_dir": ROOT_DIR / "logs",
     "bart_score_dir": BARTSCORE_DIR,
@@ -27,11 +27,26 @@ CONFIG = {
     
     # Model and training configurations
     "model_name": os.getenv('MODEL_NAME', "google/flan-t5-base"),
-    "checkpoint_path": "/data/agirard/Projects/TimeTravel-PolicyGradientRL/models/model_2024-03-22-10/checkpoint-epoch=05-val_loss=0.86.ckpt",  # Updated checkpoint path
     "batch_size": int(os.getenv('BATCH_SIZE', 4)),
     "num_workers": int(os.getenv('NUM_WORKERS', 3)),
-    "max_epochs": int(os.getenv('MAX_EPOCHS', 3)),
+    "max_epochs_mle": int(os.getenv('MAX_EPOCHS_MLE', 2)),
+    "max_epochs_pg": int(os.getenv('MAX_EPOCHS_PG', 3)),
     "learning_rate": float(os.getenv('LEARNING_RATE', 2e-5)),
+    # Epochs and Training Phases
+    #"use_checkpoint": False,       # Set to True to load from a checkpoint initially
+    #"checkpoint_path": "/data/agirard/Projects/TimeTravel-PolicyGradientRL/models/model_2024-03-22-10/checkpoint-epoch=05-val_loss=0.86.ckpt",  # Updated checkpoint path
+    "mle_epochs_model1": 1,       # Model 1: MLE only for 6 epochs
+    "mle_epochs_model2": 1,       # Model 2: MLE phase for 3 epochs
+    "pg_epochs_model2": 1,        # Model 2: PG phase for 3 epochs
+
+
+    "use_custom_loss":True,
+
+    # Reward-based training configuration
+    "reward_metric": os.getenv("REWARD_METRIC", "rouge"),  # Can be "rouge", "bleu", "bert", bart.
+    "baseline_score": float(os.getenv("BASELINE_SCORE", 0.5)),  # 0.5,0.3,0.7,0.8
+   
+    
     
 
     # Preprocess data parameters
@@ -41,10 +56,7 @@ CONFIG = {
     # Text generation parameters
     "max_gen_length": 250,  # Maximum length for generated text
 
-    # Reward-based training configuration
-    "reward_metric": os.getenv("REWARD_METRIC", "rouge"),  # Can be "rouge", "bleu", "bert", bart.
-    "baseline_score": float(os.getenv("BASELINE_SCORE", 0.7)),  # 0.5,0.3,0.7,0.8
-   
+
     # BERTScorer settings
     "use_bert": False,  # Enable BERT usage
     "bert_scorer_model_type": "microsoft/deberta-xlarge-mnli", 
@@ -59,11 +71,8 @@ CONFIG = {
     "use_bleu": False,  # Enable BLEU usage (this flag allows you to toggle BLEU)
    
     #Output attentions for model interpretability
-    "output_attentions": False,  # Set this to True if you want the model to return attention weights
+    "output_attentions": False,  # Set this to True if you want the model to return attention weights    
 
-    # NEW FLAG: Toggle between MLE loss and Policy Gradient loss
-    "use_policy_gradient": True,  # Set to True to use Policy Gradient Loss, False for MLE Loss
-    "use_checkpoint": False       # Set to True to load from checkpoint, False to download a new model
 }
 
 # Optionally, validate or create the directories
