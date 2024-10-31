@@ -35,7 +35,7 @@ CONFIG = {
     # Epochs and Training Phases
     #"use_checkpoint": False,       # Set to True to load from a checkpoint initially
     #"checkpoint_path": "/data/agirard/Projects/TimeTravel-PolicyGradientRL/models/model_2024-03-22-10/checkpoint-epoch=05-val_loss=0.86.ckpt",  # Updated checkpoint path
-    "mle_epochs_model1": 1,       # Model 1: MLE only for 6 epochs
+    "mle_epochs_model1": 2,       # Model 1: MLE only for 6 epochs
     "mle_epochs_model2": 1,       # Model 2: MLE phase for 3 epochs
     "pg_epochs_model2": 1,        # Model 2: PG phase for 3 epochs
 
