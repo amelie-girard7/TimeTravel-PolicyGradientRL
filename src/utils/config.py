@@ -17,37 +17,33 @@ CONFIG = {
     "results_dir": ROOT_DIR / "results",  # Directory to save the results
     
     # File names
-    "train_file": "train_supervised_small_sample.json",
-    "dev_file": "dev_data_sample.json",
-    "test_file": "test_data_sample.json",
+    #"train_file": "train_supervised_small_sample.json",
+    #"dev_file": "dev_data_sample.json",
+    #"test_file": "test_data_sample.json",
 
-    #"train_file": "train_supervised_small.json",
-    #"dev_file": "dev_data.json",
-    #"test_file": "test_data.json",
+    "train_file": "train_supervised_small.json",
+    "dev_file": "dev_data.json",
+    "test_file": "test_data.json",
     
     # Model and training configurations
     "model_name": os.getenv('MODEL_NAME', "google/flan-t5-base"),
     "batch_size": int(os.getenv('BATCH_SIZE', 4)),
     "num_workers": int(os.getenv('NUM_WORKERS', 3)),
-    "max_epochs_mle": int(os.getenv('MAX_EPOCHS_MLE', 2)),
-    "max_epochs_pg": int(os.getenv('MAX_EPOCHS_PG', 3)),
     "learning_rate": float(os.getenv('LEARNING_RATE', 2e-5)),
     # Epochs and Training Phases
-    #"use_checkpoint": False,       # Set to True to load from a checkpoint initially
-    #"checkpoint_path": "/data/agirard/Projects/TimeTravel-PolicyGradientRL/models/model_2024-03-22-10/checkpoint-epoch=05-val_loss=0.86.ckpt",  # Updated checkpoint path
-    "mle_epochs_model1": 2,       # Model 1: MLE only for 6 epochs
-    "mle_epochs_model2": 1,       # Model 2: MLE phase for 3 epochs
-    "pg_epochs_model2": 1,        # Model 2: PG phase for 3 epochs
+    "use_checkpoint": False,       # Set to True to load from a checkpoint initially
+    "checkpoint_path": "/data/agirard/Projects/TimeTravel-PolicyGradientRL/models/model_2024-03-22-10/checkpoint-epoch=05-val_loss=0.86.ckpt",  # Updated checkpoint path
+    "mle_epochs_model1": 6,       # Model 1: MLE only for 6 epochs
+    "mle_epochs_model2": 3,       # Model 2: MLE phase for 3 epochs
+    "pg_epochs_model2": 3,        # Model 2: PG phase for 3 epochs
 
 
-    "use_custom_loss":True,
+    "use_custom_loss":False,
 
     # Reward-based training configuration
     "reward_metric": os.getenv("REWARD_METRIC", "rouge"),  # Can be "rouge", "bleu", "bert", bart.
     "baseline_score": float(os.getenv("BASELINE_SCORE", 0.5)),  # 0.5,0.3,0.7,0.8
    
-    
-    
 
     # Preprocess data parameters
     "max_length": 512,  # Maximum length for input data

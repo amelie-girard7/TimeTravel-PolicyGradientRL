@@ -144,7 +144,7 @@ cython_debug/
 data/
 
 # Ignore all files and folders in the 'models' directory
-models/
+/models/
 
 # Ignore all files inside 'bertviz' directory
 bertviz/

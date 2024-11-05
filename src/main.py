@@ -24,14 +24,14 @@ def setup_model(model_dir, file_label=""):
     model = FlanT5FineTuner(CONFIG["model_name"], model_dir, file_label=file_label)
     return model
 
-def setup_trainer(model_dir, max_epochs, checkpoint_callback, wandb_project_name="counterfactualSR"):
+def setup_trainer(model_dir, max_epochs, checkpoint_callback, wandb_project_name="counterfactualStory"):
     """
     Sets up the PyTorch Lightning Trainer with W&B logger and checkpointing.
     """
     # Initialize W&B logger
     wandb_logger = WandbLogger(
         project=wandb_project_name,
-        entity="ACL-paper",
+        entity="counterfactualStory",
         log_model="all"
     )
     wandb_logger.experiment.config.update(CONFIG)  # Sync CONFIG with WandB
@@ -88,11 +88,11 @@ def main():
         model1.use_policy_gradient = False  # MLE training mode
         mle_checkpoint_callback_model1 = ModelCheckpoint(
             dirpath=model_dir_model1,
-            every_n_train_steps=100,
+            #every_n_train_steps=100,
             monitor='validation_mle_loss',
             mode='min',
             save_top_k=1,
-            save_last=True,  # Always save the last model
+            #save_last=True,  # Always save the last model
             filename="best_mle_checkpoint_model1"
         )
         mle_trainer_model1 = setup_trainer(model_dir_model1, CONFIG["mle_epochs_model1"], mle_checkpoint_callback_model1)
@@ -104,11 +104,11 @@ def main():
         model2.use_policy_gradient = False  # MLE training mode
         mle_checkpoint_callback_model2 = ModelCheckpoint(
             dirpath=model_dir_model2,
-            every_n_train_steps=100,
+            #every_n_train_steps=100,
             monitor='validation_mle_loss',
             mode='min',
             save_top_k=1,
-            save_last=True,  # Always save the last model
+            #save_last=True,  # Always save the last model
             filename="best_mle_checkpoint_model2"
         )
         mle_trainer_model2 = setup_trainer(model_dir_model2, CONFIG["mle_epochs_model2"], mle_checkpoint_callback_model2)
@@ -137,9 +137,9 @@ def main():
 
         pg_checkpoint_callback_model2 = ModelCheckpoint(
             dirpath=model_dir_model2,
-            every_n_train_steps=100,
-            monitor='validation_pg_loss', # Monitor policy gradient loss
-            mode='min',
+            #every_n_train_steps=100,
+            monitor='validation_pg_loss',
+            mode='max',
             save_top_k=1,
             save_last=True,  # Always save the last model
             filename="best_pg_checkpoint_model2"
