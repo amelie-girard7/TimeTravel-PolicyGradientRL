@@ -2,76 +2,70 @@
 import os
 from pathlib import Path
 
-# Allow the root directory to be set via an environment variable for flexibility
+# Set the root directory based on an environment variable or default to a parent directory
 ROOT_DIR = Path(os.getenv('TIMETRAVEL_ROOT', Path(__file__).resolve().parent.parent.parent))
-BARTSCORE_DIR = ROOT_DIR / "src" / "BARTScore_metric"
 
-# Configuration parameters
+# Configuration dictionary for model training, paths, and other settings
 CONFIG = {
     # Paths relative to the root directory
-    "root_dir": ROOT_DIR, 
-    "data_dir": ROOT_DIR / "data" / "transformed",
-    "models_dir": ROOT_DIR / "models",
-    "logs_dir": ROOT_DIR / "logs",
-    "bart_score_dir": BARTSCORE_DIR,
-    "results_dir": ROOT_DIR / "results",  # Directory to save the results
-    
-    # File names
+    "root_dir": ROOT_DIR,
+    "data_dir": ROOT_DIR / "data" / "transformed",  # Directory containing transformed data
+    "models_dir": ROOT_DIR / "models",  # Directory to save models
+    "logs_dir": ROOT_DIR / "logs",  # Directory for logs
+    "results_dir": ROOT_DIR / "results",  # Directory for results (e.g., validation details)
+
+    # Sample File names for training, validation, and test datasets
     #"train_file": "train_supervised_small_sample.json",
     #"dev_file": "dev_data_sample.json",
     #"test_file": "test_data_sample.json",
 
+    # File names for training, validation, and test datasets
     "train_file": "train_supervised_small.json",
     "dev_file": "dev_data.json",
     "test_file": "test_data.json",
-    
+
     # Model and training configurations
-    "model_name": os.getenv('MODEL_NAME', "google/flan-t5-base"),
-    "batch_size": int(os.getenv('BATCH_SIZE', 4)),
-    "num_workers": int(os.getenv('NUM_WORKERS', 3)),
-    "learning_rate": float(os.getenv('LEARNING_RATE', 2e-5)),
-    # Epochs and Training Phases
-    "use_checkpoint": False,       # Set to True to load from a checkpoint initially
-    "checkpoint_path": "/data/agirard/Projects/TimeTravel-PolicyGradientRL/models/model_2024-03-22-10/checkpoint-epoch=05-val_loss=0.86.ckpt",  # Updated checkpoint path
-    "mle_epochs_model1": 6,       # Model 1: MLE only for 6 epochs
-    "mle_epochs_model2": 3,       # Model 2: MLE phase for 3 epochs
-    "pg_epochs_model2": 3,        # Model 2: PG phase for 3 epochs
+    "model_name": os.getenv('MODEL_NAME', "google/flan-t5-base"),  # Hugging Face model to load
+    "batch_size": int(os.getenv('BATCH_SIZE', 4)),  # Number of samples per batch
+    "num_workers": int(os.getenv('NUM_WORKERS', 3)),  # Number of workers for data loading
+    "learning_rate": float(os.getenv('LEARNING_RATE', 2e-5)),  # Learning rate for the optimizer
 
+    # Additional training options
+    "use_custom_loss": False,  # Whether to use a custom loss function (set to False for MLE)
+    "output_attentions": False,  # Set to True to output attentions from the model (optional)
 
-    "use_custom_loss":False,
+    # MLE Phase configurations
+    "mle_enabled": True,  # Enable MLE training
+    "mle_from_checkpoint": False,  # Start training from scratch (no checkpoint)
+    "mle_checkpoint_path": None,  # No checkpoint path since we start from scratch
+    "mle_epochs": 3,  # Number of epochs to train with MLE
 
-    # Reward-based training configuration
-    "reward_metric": os.getenv("REWARD_METRIC", "rouge"),  # Can be "rouge", "bleu", "bert", bart.
-    "baseline_score": float(os.getenv("BASELINE_SCORE", 0.5)),  # 0.5,0.3,0.7,0.8
-   
+    # PG Phase configurations (disabled in this experiment)
+    "pg_enabled": True,  # Disable policy gradient training (PG phase)
+    "pg_from_checkpoint": False,  # Start PG training from the best MLE checkpoint, not a separate checkpoint
+    "pg_checkpoint_path": None,   # Leave as None to use the best MLE checkpoint
+    "pg_epochs": 3,  # Number of epochs to fine-tune with PG
 
-    # Preprocess data parameters
+    # Reward-based training configurations
+    "reward_metric": "rouge",   #Reward metric for PG (default to "rouge")
+    "baseline_score": 0.5,  # Baseline score for PG (used to calculate rewards)
+
+    # Preprocessing and generation parameters
     "max_length": 512,  # Maximum length for input data
-    "shuffle": True,  # Shuffle data during training
-
-    # Text generation parameters
+    "shuffle": True,  # Shuffle the data during training
     "max_gen_length": 250,  # Maximum length for generated text
 
-
-    # BERTScorer settings
-    "use_bert": False,  # Enable BERT usage
-    "bert_scorer_model_type": "microsoft/deberta-xlarge-mnli", 
-    "scorer_device": "cuda:0",  # Device for BERT scorer
-    "bert_scorer_batch_size": 1,
-
-    # BARTScorer settings
-    "use_bart": False,  # Enable BART usage
-    "bart_scorer_checkpoint": "facebook/bart-large-cnn",  # BART model checkpoint
-
-    # BLEU Scorer settings
-    "use_bleu": False,  # Enable BLEU usage (this flag allows you to toggle BLEU)
-   
-    #Output attentions for model interpretability
-    "output_attentions": False,  # Set this to True if you want the model to return attention weights    
-
+    # Additional configuration for scoring metrics 
+    "use_bert": False,  # Disable BERT scorer
+    "bert_scorer_model_type": "microsoft/deberta-xlarge-mnli",  # Default BERT model for scorer 
+    "scorer_device": "cuda:0",  # Device for the scorer
+    "bert_scorer_batch_size": 1,  # Batch size for BERT scorer 
+    "use_bart": False,  # Disable BART scorer
+    "bart_scorer_checkpoint": "facebook/bart-large-cnn",  # Default BART model for scorer 
+    "use_bleu": False  # Disable BLEU scorer
 }
 
-# Optionally, validate or create the directories
+# Create any directories that don't exist
 for path_key in ['data_dir', 'models_dir', 'logs_dir', 'results_dir']:
     path = CONFIG[path_key]
     if not path.exists():
