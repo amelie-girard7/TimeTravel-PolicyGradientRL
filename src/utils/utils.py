@@ -70,7 +70,7 @@ def preprocess_data(row, tokenizer):
         input_sequence = (
             f"{row['premise']}"
             f"{row['initial']}"
-            f"{row['original_ending']} {separator_token} "
+            f"{row['original_ending']} {separator_token}"
             f"{row['premise']} {row['counterfactual']}"
         )
 
@@ -94,10 +94,10 @@ def preprocess_data(row, tokenizer):
         # Ensure that 'differential_weights' matches the length of 'labels'
         assert tokenized_ending['input_ids'].squeeze(0).size() == differential_weights.size(), "Mismatch between labels and differential weights length."
         
-        print(f"Input IDs: {tokenized_inputs['input_ids']}")
-        print(f"Attention Mask: {tokenized_inputs['attention_mask']}")
-        print(f"Labels: {tokenized_ending['input_ids']}")
-        print(f"Differential Weights: {differential_weights}")
+        #print(f"Input IDs: {tokenized_inputs['input_ids']}")
+        #print(f"Attention Mask: {tokenized_inputs['attention_mask']}")
+        #print(f"Labels: {tokenized_ending['input_ids']}")
+        #print(f"Differential Weights: {differential_weights}")
 
         # Return the tokenized inputs, labels, and original data fields for evaluation.
         return {
@@ -198,12 +198,12 @@ def chatgpt_zero_shot_inference(api_key, test_data):
                 generated_text = response['choices'][0]['message']['content'].strip()
                 break  # Exit the retry loop on success
             except Exception as e:
-                print(f"API call failed for row {idx} with error: {e}")
+                #print(f"API call failed for row {idx} with error: {e}")
                 if attempt < max_retries - 1:
-                    print(f"Retrying in {retry_delay} seconds...")
+                    #print(f"Retrying in {retry_delay} seconds...")
                     time.sleep(retry_delay)
                 else:
-                    print("Max retries reached. Moving to the next item.")
+                    #print("Max retries reached. Moving to the next item.")
                     generated_text = 'Error'  # Or any placeholder indicating a failure
 
         results.append({

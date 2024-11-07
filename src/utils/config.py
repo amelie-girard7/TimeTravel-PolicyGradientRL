@@ -15,14 +15,14 @@ CONFIG = {
     "results_dir": ROOT_DIR / "results",  # Directory for results (e.g., validation details)
 
     # Sample File names for training, validation, and test datasets
-    #"train_file": "train_supervised_small_sample.json",
-    #"dev_file": "dev_data_sample.json",
-    #"test_file": "test_data_sample.json",
+    "train_file": "train_supervised_small_sample.json",
+    "dev_file": "dev_data_sample.json",
+    "test_file": "test_data_sample.json",
 
     # File names for training, validation, and test datasets
-    "train_file": "train_supervised_small.json",
-    "dev_file": "dev_data.json",
-    "test_file": "test_data.json",
+    #"train_file": "train_supervised_small.json",
+    #"dev_file": "dev_data.json",
+    #"test_file": "test_data.json",
 
     # Model and training configurations
     "model_name": os.getenv('MODEL_NAME', "google/flan-t5-base"),  # Hugging Face model to load
@@ -47,7 +47,7 @@ CONFIG = {
     "pg_epochs": 3,  # Number of epochs to fine-tune with PG
 
     # Reward-based training configurations
-    "reward_metric": "rouge",   #Reward metric for PG (default to "rouge")
+    "reward_metric": "rouge",   ## Primary reward metric for PG (e.g., "rouge", "bert", "bart") (default to "rouge")
     "baseline_score": 0.5,  # Baseline score for PG (used to calculate rewards)
 
     # Preprocessing and generation parameters

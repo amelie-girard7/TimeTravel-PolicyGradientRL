@@ -175,9 +175,6 @@ class FlanT5FineTuner(pl.LightningModule):
             self.log('training_mle_loss', mle_train_loss, on_epoch=True, prog_bar=True, logger=True)
 
             # Calculate and log average score for generated texts
-            print(f'Tokenizer vocab -> {self.tokenizer.vocab_size}')
-            print(f'Output logit size -> {outputs.logits.size()[-1]}')
-            print(f'Output masked logit size -> {masked_logits.size()[-1]}')
             generated_texts = self.tokenizer.batch_decode(masked_logits.argmax(-1), skip_special_tokens=True)
             edited_endings = [str(ee) for ee in batch['edited_ending']]
             scores = self.metrics_evaluator.calculate_score(generated_texts, edited_endings).detach()
@@ -188,13 +185,19 @@ class FlanT5FineTuner(pl.LightningModule):
 
     def validation_step(self, batch, batch_idx):
         input_ids, attention_mask, labels = batch['input_ids'], batch['attention_mask'], batch['labels']
-
+        
         if self.use_policy_gradient:
-            print("Policy gradient mode active. Logging validation_pg_reward_mean.")
             # Policy Gradient (PG) validation mode
             generated_tokens, logits = self.forward(input_ids=input_ids, attention_mask=attention_mask)
             generated_texts = self.tokenizer.batch_decode(generated_tokens, skip_special_tokens=True)
             edited_endings = [str(ee) for ee in batch['edited_ending']]
+
+            # Check if lengths of generated texts and references match
+            if len(generated_texts) != len(edited_endings):
+                logger.warning("Mismatch between generated texts and edited endings lengths. Adjusting to minimum length.")
+                min_len = min(len(generated_texts), len(edited_endings))
+                generated_texts = generated_texts[:min_len]
+                edited_endings = edited_endings[:min_len]
 
             # Calculate rewards and PG validation loss
             scores = self.metrics_evaluator.calculate_score(generated_texts, edited_endings).detach()
@@ -202,9 +205,11 @@ class FlanT5FineTuner(pl.LightningModule):
             pg_val_loss = self.calculate_policy_gradient_loss(generated_tokens, logits, rewards)
 
             # Log PG validation loss and reward mean
-            print("Logging validation_pg_loss:", pg_val_loss)  # Debugging
             self.log('validation_pg_loss', pg_val_loss, on_epoch=True, prog_bar=True, logger=True)
             self.log('validation_pg_reward_mean', rewards.mean(), on_epoch=True, prog_bar=True, logger=True)
+
+            # Ensure logging of `validation_mle_loss` even in PG mode, for checkpointing compatibility
+            self.log('validation_mle_loss', pg_val_loss, on_epoch=True, prog_bar=False, logger=True)  # Log for compatibility
 
             # Save PG validation details for end-of-epoch logging
             for i in range(len(generated_texts)):
@@ -226,19 +231,26 @@ class FlanT5FineTuner(pl.LightningModule):
         else:
             # MLE validation mode
             outputs = self.forward(input_ids=input_ids, attention_mask=attention_mask, labels=labels)
-            masked_logits = self.apply_vocab_masking(outputs.logits)  # Apply masking to logits
-            mle_val_loss = outputs.loss
+            mle_val_loss = outputs.loss  # Calculate MLE loss directly from outputs
 
             # Log MLE validation loss
-            print("Logging validation_mle_loss:", mle_val_loss)  # Debugging
             self.log('validation_mle_loss', mle_val_loss, on_epoch=True, prog_bar=True, logger=True)
 
-            # Decode and calculate scores for MLE validation
-            print(f'Tokenizer vocab -> {self.tokenizer.vocab_size}')
-            print(f'Output logit size -> {outputs.logits.size()[-1]}')
-            print(f'Output masked logit size -> {masked_logits.size()[-1]}')
-            generated_texts = self.tokenizer.batch_decode(masked_logits.argmax(-1), skip_special_tokens=True)
+            # Decode and calculate scores for MLE validation using `generate` (for proper inference behavior)
+            generated_texts = self.tokenizer.batch_decode(
+                self.model.generate(input_ids=input_ids, attention_mask=attention_mask, max_length=CONFIG['max_gen_length']),
+                skip_special_tokens=True
+            )
             edited_endings = [str(ee) for ee in batch['edited_ending']]
+            
+            # Check if lengths of generated texts and references match
+            if len(generated_texts) != len(edited_endings):
+                logger.warning("Mismatch between generated texts and edited endings lengths. Adjusting to minimum length.")
+                min_len = min(len(generated_texts), len(edited_endings))
+                generated_texts = generated_texts[:min_len]
+                edited_endings = edited_endings[:min_len]
+
+            # Calculate scores for generated texts
             scores = self.metrics_evaluator.calculate_score(generated_texts, edited_endings).detach()
             score_mean = scores.mean()
             self.log('validation_mle_score_mean', score_mean, on_epoch=True, prog_bar=True, logger=True)
@@ -259,6 +271,7 @@ class FlanT5FineTuner(pl.LightningModule):
                     "Mode": "MLE"
                 })
             return mle_val_loss  # Return MLE validation loss for logging
+
 
     def on_validation_epoch_end(self, test_flag=False):
         """
