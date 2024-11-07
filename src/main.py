@@ -1,6 +1,4 @@
-# /data/agirard/Projects/TimeTravel-PolicyGradientRL/src/main.py
 import os
-import sys
 import datetime
 import logging
 from transformers import T5Tokenizer
@@ -31,22 +29,23 @@ def setup_model(model_dir, file_label="", checkpoint_path=None, use_policy_gradi
         logger.info(f"Initializing a fresh model: {CONFIG['model_name']} with label {file_label}")
         model = FlanT5FineTuner(CONFIG["model_name"], model_dir, file_label=file_label)
 
+    # Set model training mode
     model.use_policy_gradient = use_policy_gradient
     return model
 
-def setup_trainer(model_dir, max_epochs, checkpoint_callback, wandb_logger):
+def setup_trainer(model_dir, max_epochs, checkpoint_callback, wandb_logger, starting_epoch=0):
     """
-    Sets up the PyTorch Lightning Trainer with WandB logger and checkpointing.
+    Sets up the PyTorch Lightning Trainer with W&B logger and checkpointing.
     """
     trainer = Trainer(
-        max_epochs=max_epochs,
+        max_epochs=max_epochs + starting_epoch,  # total epochs from the start
         accelerator='gpu',
         devices=1,
         logger=wandb_logger,  # Use the shared WandB logger instance
         callbacks=[checkpoint_callback],
-        val_check_interval=0.1
+        val_check_interval=0.1  # Set validation frequency
     )
-    logger.info(f"Trainer setup complete for {max_epochs} epochs.")
+    logger.info(f"Trainer setup complete for {max_epochs} epochs starting from epoch {starting_epoch}.")
     return trainer
 
 def main():
@@ -75,6 +74,7 @@ def main():
     # --- MLE Phase ---
     if CONFIG["mle_enabled"]:
         mle_checkpoint = CONFIG["mle_checkpoint_path"] if CONFIG["mle_from_checkpoint"] else None
+        print("Starting MLE phase training...")
         model = setup_model(
             model_dir, 
             file_label="_mle", 
@@ -89,26 +89,27 @@ def main():
             save_top_k=1,
             filename="best_mle_checkpoint"
         )
+
+        # Train with MLE
         trainer = setup_trainer(model_dir, CONFIG["mle_epochs"], mle_checkpoint_callback, wandb_logger)
         trainer.fit(model, dataloaders[train_key], dataloaders[dev_key])
+        
+        # Capture the last completed epoch in MLE phase for continuity in PG phase
+        last_mle_epoch = trainer.current_epoch
+        print(f"MLE training completed. Last MLE epoch: {last_mle_epoch}")
 
     # --- PG Phase ---
     if CONFIG["pg_enabled"]:
-        # Choose the checkpoint based on config:
-        # - If "pg_from_checkpoint" is True, use "pg_checkpoint_path" if provided.
-        # - If no path is provided, use the best MLE checkpoint (from the prior MLE phase).
-        pg_checkpoint = CONFIG["pg_checkpoint_path"] if CONFIG["pg_from_checkpoint"] else mle_checkpoint_callback.best_model_path
+        print("Starting PG phase training...")
         
-        # Set up the model for PG, either from the checkpoint or fresh from Hugging Face
+        # Load from PG-specific checkpoint or latest MLE checkpoint
+        pg_checkpoint = CONFIG["pg_checkpoint_path"] if CONFIG["pg_from_checkpoint"] else mle_checkpoint_callback.best_model_path
         model = setup_model(
             model_dir, 
             file_label="_pg", 
-            checkpoint_path=pg_checkpoint,  # This can be None if starting fresh
-            use_policy_gradient=True        # Set to True to use PG mode
+            checkpoint_path=pg_checkpoint, 
+            use_policy_gradient=True
         )
-
-        # Optional: If MLE was trained beforehand, continue the epoch count
-        model.current_epoch = CONFIG["mle_epochs"] if CONFIG["mle_enabled"] else 0
 
         pg_checkpoint_callback = ModelCheckpoint(
             dirpath=model_dir,
@@ -117,12 +118,16 @@ def main():
             save_top_k=1,
             filename="best_pg_checkpoint"
         )
-        trainer = setup_trainer(model_dir, CONFIG["pg_epochs"], pg_checkpoint_callback, wandb_logger)
-        trainer.fit(model, dataloaders[train_key], dataloaders[dev_key])
+
+        # Set the starting epoch for PG phase to continue logging from MLE phase
+        trainer = setup_trainer(model_dir, CONFIG["pg_epochs"], pg_checkpoint_callback, wandb_logger, starting_epoch=last_mle_epoch)
+        
+        # Start PG training from the MLE checkpoint
+        trainer.fit(model, dataloaders[train_key], dataloaders[dev_key], ckpt_path=pg_checkpoint)
+        print(f"PG training completed from epoch {last_mle_epoch} onward.")
 
     # --- Testing Phase ---
     if model:
-        # Only test if a model was trained (either MLE or PG)
         logger.info("Testing the final model.")
         trainer.test(model, dataloaders[test_key])
     else:
