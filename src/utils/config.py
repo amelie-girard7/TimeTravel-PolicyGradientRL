@@ -47,7 +47,7 @@ CONFIG = {
     "pg_epochs": 3,  # Number of epochs to fine-tune with PG
 
     # Reward-based training configurations
-    "reward_metric": "rouge",   ## Primary reward metric for PG (e.g., "rouge", "bert", "bart") (default to "rouge")
+    "reward_metric": "bleu",   ## Primary reward metric for PG (e.g., "rouge", "bert", "bart") (default to "rouge")
     "baseline_score": 0.5,  # Baseline score for PG (used to calculate rewards)
 
     # Preprocessing and generation parameters
@@ -59,10 +59,12 @@ CONFIG = {
     "use_bert": False,  # Disable BERT scorer
     "bert_scorer_model_type": "microsoft/deberta-xlarge-mnli",  # Default BERT model for scorer 
     "scorer_device": "cuda:0",  # Device for the scorer
-    "bert_scorer_batch_size": 1,  # Batch size for BERT scorer 
+    "bert_scorer_batch_size": 4,  # Batch size for BERT scorer 
+
+    "use_bleu": True,  # Disable BLEU scorer,
+       
     "use_bart": False,  # Disable BART scorer
-    "bart_scorer_checkpoint": "facebook/bart-large-cnn",  # Default BART model for scorer 
-    "use_bleu": False  # Disable BLEU scorer
+    "bart_scorer_checkpoint": "facebook/bart-large-cnn"  # Default BART model for scorer 
 }
 
 # Create any directories that don't exist
