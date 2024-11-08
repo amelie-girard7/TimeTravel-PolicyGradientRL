@@ -35,6 +35,10 @@ class MetricsEvaluator:
         # Initialize BLEU scorer if configured to use BLEU
         self.sacre_bleu = BLEU() if CONFIG.get("use_bleu", False) else None
 
+        # Check if sacrebleu supports effective_order
+        self.supports_effective_order = hasattr(self.sacre_bleu, 'sentence_score') and \
+                                        'effective_order' in BLEU.sentence_score.__code__.co_varnames
+
         # Initialize BARTScorer if configured to use BARTScore
         self.bart_scorer = BARTScorer(
             device=CONFIG.get("scorer_device", "cpu"), 
@@ -81,20 +85,22 @@ class MetricsEvaluator:
             _, _, f1 = self.bert_scorer.score(generated_texts, references)
             scores = f1.tolist()  # Convert tensor to list
 
-        # Case 3: BLEU is selected as the score metric
+        # Case 3: BLEU is selected as the score metric with one-to-one comparison
         elif score_metric == "bleu":
             if self.sacre_bleu is None:
                 raise ValueError("BLEU is not initialized. Set 'use_bleu' to True in CONFIG.")
-            print("Calculating BLEU score...")
-            bleu_result = self.sacre_bleu.corpus_score(generated_texts, [references])
-            scores = [bleu_result.score for _ in generated_texts]  # Use the same BLEU score for all samples
+            print("Calculating BLEU score for each generated-reference pair...")
+            scores = []
+            for gen_text, ref_text in zip(generated_texts, references):
+                score = self.sacre_bleu.sentence_score(gen_text, [ref_text]).score
+                scores.append(score)
 
         # Case 4: BARTScore is selected as the score metric
         elif score_metric == "bart":
             if self.bart_scorer is None:
                 raise ValueError("BARTScore is not initialized. Set 'use_bart' to True in CONFIG.")
             print("Calculating BARTScore...")
-            scores = self.bart_scorer.score(generated_texts, references).tolist()  # BARTScore for each example
+            scores = self.bart_scorer.score(generated_texts, references)  # BARTScore for each example
 
         # Unsupported score metric
         else:
@@ -112,10 +118,10 @@ class MetricsEvaluator:
         print("Calculating BLEU scores...")
 
         # Prepare references for BLEU score calculation
-        edited_endings_refs = [[ending] for ending in all_edited_endings] if all_edited_endings else None
-        counterfactuals_refs = [[cf] for cf in all_counterfactuals]
-        initials_refs = [[init] for init in all_initials]
-        original_endings_refs = [[orig] for orig in all_original_endings]
+        edited_endings_refs = all_edited_endings if all_edited_endings else None
+        counterfactuals_refs = all_counterfactuals
+        initials_refs = all_initials
+        original_endings_refs = all_original_endings
 
         # List of all comparisons we want to calculate BLEU scores for
         all_comparisons = [
@@ -133,10 +139,23 @@ class MetricsEvaluator:
         for label, texts, references in all_comparisons:
             if references is not None:
                 try:
-                    bleu_result = self.sacre_bleu.corpus_score(texts, references)
-                    bleu_score = bleu_result.score
-                    logger.info(f"{label}: {bleu_score}")
-                    bleu_scores[label] = bleu_score
+                    # Compute BLEU score for each generated-reference pair individually
+                    individual_scores = []
+                    for gen_text, ref_text in zip(texts, references):
+                        bleu_result = self.sacre_bleu.sentence_score(gen_text, [ref_text])
+                        individual_scores.append(bleu_result.score)
+                    
+                    # Log individual BLEU scores for debugging purposes
+                    logger.info(f"{label} individual BLEU scores: {individual_scores}")
+                    
+                    # Average BLEU scores for the current comparison
+                    average_bleu_score = sum(individual_scores) / len(individual_scores) if individual_scores else float('nan')
+                    logger.info(f"{label} average BLEU score: {average_bleu_score}")
+                    bleu_scores[label] = {
+                        "individual_scores": individual_scores,
+                        "average_score": average_bleu_score
+                    }
+
                 except Exception as e:
                     logger.error(f"Error calculating {label}: {e}")
                     bleu_scores[label] = 'N/A'
