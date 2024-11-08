@@ -192,12 +192,15 @@ class FlanT5FineTuner(pl.LightningModule):
             generated_texts = self.tokenizer.batch_decode(generated_tokens, skip_special_tokens=True)
             edited_endings = [str(ee) for ee in batch['edited_ending']]
 
-            # Check if lengths of generated texts and references match
-            if len(generated_texts) != len(edited_endings):
-                logger.warning("Mismatch between generated texts and edited endings lengths. Adjusting to minimum length.")
-                min_len = min(len(generated_texts), len(edited_endings))
-                generated_texts = generated_texts[:min_len]
-                edited_endings = edited_endings[:min_len]
+            # Check for non-empty generated texts and references
+            non_empty_indices = [i for i, text in enumerate(generated_texts) if text.strip()]
+            if not non_empty_indices:
+                logger.warning("All generated texts are empty in this batch; skipping ROUGE calculation.")
+                return torch.tensor(0.0, device=self.device)  # Return a placeholder loss for empty cases
+
+            # Filter lists to only include non-empty elements
+            generated_texts = [generated_texts[i] for i in non_empty_indices]
+            edited_endings = [edited_endings[i] for i in non_empty_indices]
 
             # Calculate rewards and PG validation loss
             scores = self.metrics_evaluator.calculate_score(generated_texts, edited_endings).detach()
@@ -243,12 +246,15 @@ class FlanT5FineTuner(pl.LightningModule):
             )
             edited_endings = [str(ee) for ee in batch['edited_ending']]
             
-            # Check if lengths of generated texts and references match
-            if len(generated_texts) != len(edited_endings):
-                logger.warning("Mismatch between generated texts and edited endings lengths. Adjusting to minimum length.")
-                min_len = min(len(generated_texts), len(edited_endings))
-                generated_texts = generated_texts[:min_len]
-                edited_endings = edited_endings[:min_len]
+            # Filter empty generated texts for ROUGE calculation
+            non_empty_indices = [i for i, text in enumerate(generated_texts) if text.strip()]
+            if not non_empty_indices:
+                logger.warning("All generated texts are empty in this batch; skipping ROUGE calculation.")
+                return mle_val_loss
+            
+            # Apply filtering
+            generated_texts = [generated_texts[i] for i in non_empty_indices]
+            edited_endings = [edited_endings[i] for i in non_empty_indices]
 
             # Calculate scores for generated texts
             scores = self.metrics_evaluator.calculate_score(generated_texts, edited_endings).detach()
@@ -271,7 +277,6 @@ class FlanT5FineTuner(pl.LightningModule):
                     "Mode": "MLE"
                 })
             return mle_val_loss  # Return MLE validation loss for logging
-
 
     def on_validation_epoch_end(self, test_flag=False):
         """
