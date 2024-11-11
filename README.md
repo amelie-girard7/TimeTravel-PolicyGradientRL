@@ -107,17 +107,4 @@ During PG fine-tuning, the model is trained to maximize expected rewards by adju
 
 ## Experimental Setup
 
-### Configuration
-
-Configuration parameters are defined in a configuration file (`config.py`). These include:
-- Number of epochs for each phase (MLE and PG),
-- Reward metrics,
-- Baseline adjustments for PG, and
-- Training parameters like batch size and learning rate.
-
-### Running the Experiment
-
-1. **MLE Training (Experiment 1)**: Run `main_mle.py` to perform MLE training and save the best model checkpoint based on validation loss.
-   
-2. **PG Fine-Tuning (Experiment 2)**: After completing MLE training, run `main_pg.py` to load the best MLE checkpoint and apply PG fine-tuning.
 

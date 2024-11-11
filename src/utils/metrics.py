@@ -88,12 +88,18 @@ class MetricsEvaluator:
         # Case 3: BLEU is selected as the score metric with one-to-one comparison
         elif score_metric == "bleu":
             if self.sacre_bleu is None:
-                raise ValueError("BLEU is not initialized. Set 'use_bleu' to True in CONFIG.")
-            print("Calculating BLEU score for each generated-reference pair...")
-            scores = []
-            for gen_text, ref_text in zip(generated_texts, references):
-                score = self.sacre_bleu.sentence_score(gen_text, [ref_text]).score
-                scores.append(score)
+                raise ValueError("BLEU scorer is not initialized. Set 'use_bleu' to True in CONFIG.")
+            print("Calculating corpus-level BLEU score...")
+
+            # SacreBLEU corpus score calculation, where the references need to be nested as a list of lists
+            references = [[ref] for ref in references]  # Corpus-level BLEU expects list of list of references
+            bleu_result = self.sacre_bleu.corpus_score(generated_texts, references)
+            score = bleu_result.score  # Retrieve the BLEU score for the corpus
+
+            # Print BLEU score for debugging
+            print(f"Corpus-level BLEU score: {score}")
+            scores = [score] * len(generated_texts)  # Replicate for each item in batch for compatibility
+
 
         # Case 4: BARTScore is selected as the score metric
         elif score_metric == "bart":
@@ -110,57 +116,6 @@ class MetricsEvaluator:
         scores_tensor = torch.tensor(scores, dtype=torch.float32, device=scorer_device)
         print(f"Scores tensor (on {scorer_device}): {scores_tensor}")  # Print the final scores tensor
         return scores_tensor
-
-    def calculate_and_log_bleu_scores(self, all_generated_texts, all_edited_endings, all_counterfactuals, all_initials, all_premises, all_original_endings, logger):
-        """
-        Calculates and logs SacreBLEU scores for various comparisons between generated texts and references.
-        """
-        print("Calculating BLEU scores...")
-
-        # Prepare references for BLEU score calculation
-        edited_endings_refs = all_edited_endings if all_edited_endings else None
-        counterfactuals_refs = all_counterfactuals
-        initials_refs = all_initials
-        original_endings_refs = all_original_endings
-
-        # List of all comparisons we want to calculate BLEU scores for
-        all_comparisons = [
-            ('bleu_prediction_edited', all_generated_texts, edited_endings_refs),
-            ('bleu_prediction_cf', all_generated_texts, counterfactuals_refs),
-            ('bleu_prediction_initial', all_generated_texts, initials_refs),
-            ('bleu_prediction_original', all_generated_texts, original_endings_refs),
-            ('bleu_edited_ending_cf', all_edited_endings, counterfactuals_refs),
-            ('bleu_edited_ending_initial', all_edited_endings, initials_refs),
-            ('bleu_edited_ending_original', all_edited_endings, original_endings_refs),
-        ]
-
-        # Dictionary to store BLEU scores for each comparison
-        bleu_scores = {}
-        for label, texts, references in all_comparisons:
-            if references is not None:
-                try:
-                    # Compute BLEU score for each generated-reference pair individually
-                    individual_scores = []
-                    for gen_text, ref_text in zip(texts, references):
-                        bleu_result = self.sacre_bleu.sentence_score(gen_text, [ref_text])
-                        individual_scores.append(bleu_result.score)
-                    
-                    # Log individual BLEU scores for debugging purposes
-                    logger.info(f"{label} individual BLEU scores: {individual_scores}")
-                    
-                    # Average BLEU scores for the current comparison
-                    average_bleu_score = sum(individual_scores) / len(individual_scores) if individual_scores else float('nan')
-                    logger.info(f"{label} average BLEU score: {average_bleu_score}")
-                    bleu_scores[label] = {
-                        "individual_scores": individual_scores,
-                        "average_score": average_bleu_score
-                    }
-
-                except Exception as e:
-                    logger.error(f"Error calculating {label}: {e}")
-                    bleu_scores[label] = 'N/A'
-
-        return bleu_scores
 
     def calculate_and_log_rouge_scores(self, all_generated_texts, all_edited_endings, all_counterfactuals, all_initials, all_premises, all_original_endings, logger):
         """
@@ -254,3 +209,54 @@ class MetricsEvaluator:
                     print(f"Error calculating {label}: {e}")
 
         return bart_scores
+
+    def calculate_and_log_bleu_scores(self, all_generated_texts, all_edited_endings, all_counterfactuals, all_initials, all_premises, all_original_endings, logger):
+        """
+        Calculates and logs SacreBLEU scores for various comparisons between generated texts and references.
+        
+        Args:
+        - all_generated_texts: List of generated texts
+        - all_edited_endings: List of reference edited endings
+        - all_counterfactuals: List of counterfactuals
+        - all_initials: List of initial events
+        - all_premises: List of premises
+        - all_original_endings: List of original endings
+        - logger: Logger for logging BLEU score information
+
+        Returns:
+        - bleu_scores: Dictionary with calculated BLEU scores for different comparisons
+        """
+        print("Calculating BLEU scores...")
+
+        # Prepare references for BLEU score calculation
+        edited_endings_refs = [[ending] for ending in all_edited_endings] if all_edited_endings else None
+        counterfactuals_refs = [[cf] for cf in all_counterfactuals]
+        initials_refs = [[init] for init in all_initials]
+        original_endings_refs = [[orig] for orig in all_original_endings]
+
+        # List of all comparisons we want to calculate BLEU scores for
+        all_comparisons = [
+            ('bleu_prediction_edited', all_generated_texts, edited_endings_refs),
+            ('bleu_prediction_cf', all_generated_texts, counterfactuals_refs),
+            ('bleu_prediction_initial', all_generated_texts, initials_refs),
+            ('bleu_prediction_original', all_generated_texts, original_endings_refs),
+            ('bleu_edited_ending_cf', all_edited_endings, counterfactuals_refs),
+            ('bleu_edited_ending_initial', all_edited_endings, initials_refs),
+            ('bleu_edited_ending_original', all_edited_endings, original_endings_refs),
+        ]
+
+        # Dictionary to store BLEU scores for each comparison
+        bleu_scores = {}
+        for label, texts, references in all_comparisons:
+            if references is not None:
+                try:
+                    # Calculate BLEU score
+                    bleu_result = self.sacre_bleu.corpus_score(texts, references)
+                    bleu_score = bleu_result.score
+                    logger.info(f"{label}: {bleu_score}")
+                    bleu_scores[label] = bleu_score
+                except Exception as e:
+                    logger.error(f"Error calculating {label}: {e}")
+                    bleu_scores[label] = 'N/A'
+
+        return bleu_scores
