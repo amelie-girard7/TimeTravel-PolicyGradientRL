@@ -49,6 +49,8 @@ class FlanT5FineTuner(pl.LightningModule):
         # This attribute will be set in main.py to toggle between MLE and PG modes
         self.use_policy_gradient = False
 
+        self.epoch_scores = []  # Initialize the list to store scores
+
     def forward(self, input_ids, attention_mask, labels=None):
         """
         Forward pass through the T5 model.
@@ -185,7 +187,9 @@ class FlanT5FineTuner(pl.LightningModule):
 
     def validation_step(self, batch, batch_idx):
         input_ids, attention_mask, labels = batch['input_ids'], batch['attention_mask'], batch['labels']
-        
+        # Initialize batch_score_mean with a default value
+        batch_score_mean = torch.tensor(0.0, device=self.device)
+
         if self.use_policy_gradient:
             # Policy Gradient (PG) validation mode
             generated_tokens, logits = self.forward(input_ids=input_ids, attention_mask=attention_mask)
@@ -203,7 +207,11 @@ class FlanT5FineTuner(pl.LightningModule):
             edited_endings = [edited_endings[i] for i in non_empty_indices]
 
             # Calculate rewards and PG validation loss
+            # Existing code for generating and scoring the batch
             scores = self.metrics_evaluator.calculate_score(generated_texts, edited_endings).detach()
+            batch_score_mean = scores.mean()
+            self.epoch_scores.append(batch_score_mean.item())  # Append batch score to the list
+
             rewards = scores - CONFIG["baseline_score"]
             pg_val_loss = self.calculate_policy_gradient_loss(generated_tokens, logits, rewards)
 
@@ -259,6 +267,8 @@ class FlanT5FineTuner(pl.LightningModule):
             # Calculate scores for generated texts
             scores = self.metrics_evaluator.calculate_score(generated_texts, edited_endings).detach()
             score_mean = scores.mean()
+            self.epoch_scores.append(batch_score_mean.item())  # Append batch score to list
+
             self.log('validation_mle_score_mean', score_mean, on_epoch=True, prog_bar=True, logger=True)
 
             # Save MLE validation details for end-of-epoch logging
@@ -280,13 +290,24 @@ class FlanT5FineTuner(pl.LightningModule):
 
     def on_validation_epoch_end(self, test_flag=False):
         """
-        Handles operations at the end of the validation epoch, saving to CSV.
+        Handles operations at the end of the validation epoch, saving to CSV
+        and calculating overall score for the entire validation/test set.
         """
+        # Determine CSV file path based on test_flag
         csv_file_path = self.test_csv_file_path if test_flag else self.val_csv_file_path
+
+        # Calculate overall score for the dataset
+        if self.epoch_scores:
+            overall_score = sum(self.epoch_scores) / len(self.epoch_scores)
+            print(f"Overall score for the epoch: {overall_score}")
+            self.log("validation_overall_score", overall_score, prog_bar=True, logger=True)
+
+        # Log or save the overall score to the CSV (optional)
         if self.epoch_validation_details:
             self.log_to_csv(csv_file_path, self.epoch_validation_details)
-        else:
-            logger.info("No validation details available for logging.")
+
+        # Clear epoch scores for the next epoch
+        self.epoch_scores.clear()
         self.cleanup_epoch_data()
 
     def log_to_csv(self, csv_file_path, details):
