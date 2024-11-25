@@ -22,7 +22,7 @@ CONFIG = {
     # File names for training, validation, and test datasets
     #"train_file": "train_supervised_small.json",
     #"dev_file": "dev_data.json",
-    #"test_file": "test_data.json",
+    #"test_file": "test_data.json",    
 
     # Model and training configurations
     "model_name": os.getenv('MODEL_NAME', "google/flan-t5-base"),  # Hugging Face model to load
@@ -30,40 +30,40 @@ CONFIG = {
     "num_workers": int(os.getenv('NUM_WORKERS', 3)),  # Number of workers for data loading
     "learning_rate": float(os.getenv('LEARNING_RATE', 2e-5)),  # Learning rate for the optimizer
 
+    # Preprocessing and generation parameters
+    "max_length": 512,  # Maximum length for input data
+    "shuffle": True,  # Shuffle the data during training
+    "max_gen_length": 250,  # Maximum length for generated text
+
     # Additional training options
     "use_custom_loss": False,  # Whether to use a custom loss function (set to False for MLE)
     "output_attentions": False,  # Set to True to output attentions from the model (optional)
 
     # MLE Phase configurations
-    "mle_enabled": True,  # Enable MLE training
+    "mle_enabled": False,  # Enable MLE training
     "mle_from_checkpoint": False,  # Start training from scratch (no checkpoint)
     "mle_checkpoint_path": None,  # No checkpoint path since we start from scratch
     "mle_epochs": 3,  # Number of epochs to train with MLE
 
     # PG Phase configurations (disabled in this experiment)
     "pg_enabled": True,  # Disable policy gradient training (PG phase)
-    "pg_from_checkpoint": False,  # Start PG training from the best MLE checkpoint, not a separate checkpoint
-    "pg_checkpoint_path": None,   # Leave as None to use the best MLE checkpoint
+    "pg_from_checkpoint": True,  # Start PG training from the best MLE checkpoint, not a separate checkpoint
+    "pg_checkpoint_path": '/data/agirard/Projects/TimeTravel-PolicyGradientRL/models/mle_2024-11-25-16/mle_checkpoint_epoch=epoch=2-val_loss=validation_mle_loss=12.17.ckpt',   # Leave as None to use the best MLE checkpoint
     "pg_epochs": 3,  # Number of epochs to fine-tune with PG
 
     # Reward-based training configurations
-    "reward_metric": "bleu",   ## Primary reward metric for PG (e.g., "rouge", "bert", "bart") (default to "rouge")
+    "reward_metric": "bart",   ## Primary reward metric for PG (e.g., "rouge", "bert", "bart") (default to "rouge")
     "baseline_score": 0.5,  # Baseline score for PG (used to calculate rewards)
-
-    # Preprocessing and generation parameters
-    "max_length": 512,  # Maximum length for input data
-    "shuffle": True,  # Shuffle the data during training
-    "max_gen_length": 250,  # Maximum length for generated text
-
+  
     # Additional configuration for scoring metrics 
-    "use_bert": False,  # Disable BERT scorer
+    "use_bert": True,  # Disable BERT scorer
     "bert_scorer_model_type": "microsoft/deberta-xlarge-mnli",  # Default BERT model for scorer 
     "scorer_device": "cuda:0",  # Device for the scorer
     "bert_scorer_batch_size": 4,  # Batch size for BERT scorer 
 
     "use_bleu": True,  # Disable BLEU scorer,
        
-    "use_bart": False,  # Disable BART scorer
+    "use_bart": True,  # Disable BART scorer
     "bart_scorer_checkpoint": "facebook/bart-large-cnn"  # Default BART model for scorer 
 }
 

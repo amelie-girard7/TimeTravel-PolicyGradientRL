@@ -1,0 +1,1 @@
+{"_wandb":{"runtime":665},"validation_overall_score":-3.538283586502075,"epoch":2,"training_mle_score_mean_epoch":-1.7882436513900757,"validation_mle_loss":12.167835235595703,"_runtime":641.093046514,"_timestamp":1.7325139499370327e+09,"trainer/global_step":5,"training_mle_loss_epoch":10.602289199829102,"_step":8}
