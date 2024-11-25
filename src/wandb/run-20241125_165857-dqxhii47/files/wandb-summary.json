@@ -1,0 +1,1 @@
+{"validation_overall_score":-3.5093696117401123,"trainer/global_step":5,"_timestamp":1.732514501838272e+09,"epoch":2,"_runtime":164.608237993,"training_pg_loss_epoch":9.213932037353516,"validation_pg_reward_mean":-4.009369850158691,"validation_pg_loss":15.887721061706543,"_step":8,"_wandb":{"runtime":190},"training_pg_reward_mean_epoch":-3.3693714141845703}

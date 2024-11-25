@@ -11,13 +11,11 @@ logger = logging.getLogger(__name__)
 class MetricsEvaluator:
     """
     A class for evaluating text generation models using various metrics such as BLEU, ROUGE, BERTScore, and BARTScore.
-    This class helps compute scores for supervised learning and rewards for reinforcement learning.
     """
 
     def __init__(self):
         """
         Initializes the metric evaluators based on the configurations provided in CONFIG.
-        Depending on the settings, it initializes evaluators for BLEU, ROUGE, BERTScore, and BARTScore.
         """
         print(f"Initializing MetricsEvaluator with config: {CONFIG}")
         
@@ -25,27 +23,90 @@ class MetricsEvaluator:
         self.rouge = Rouge()  
 
         # Initialize BERTScorer if configured to use BERTScore
-        self.bert_scorer = BERTScorer(
-            model_type=CONFIG.get("bert_scorer_model_type", "bert-base-uncased"),
-            device=CONFIG.get("scorer_device", "cpu"),
-            num_layers=CONFIG.get("bert_scorer_num_layers", None),
-            batch_size=CONFIG.get("bert_scorer_batch_size", 16)
-        ) if CONFIG.get("use_bert", False) else None
+        self.bert_scorer = (
+            BERTScorer(
+                model_type=CONFIG.get("bert_scorer_model_type", "bert-base-uncased"),
+                device=CONFIG.get("scorer_device", "cuda" if torch.cuda.is_available() else "cpu"),
+                batch_size=CONFIG.get("bert_scorer_batch_size", 16)
+            ) if CONFIG.get("use_bert", False) else None
+        )
 
         # Initialize BLEU scorer if configured to use BLEU
         self.sacre_bleu = BLEU() if CONFIG.get("use_bleu", False) else None
 
-        # Check if sacrebleu supports effective_order
-        self.supports_effective_order = hasattr(self.sacre_bleu, 'sentence_score') and \
-                                        'effective_order' in BLEU.sentence_score.__code__.co_varnames
-
         # Initialize BARTScorer if configured to use BARTScore
-        self.bart_scorer = BARTScorer(
-            device=CONFIG.get("scorer_device", "cpu"), 
-            checkpoint=CONFIG.get("bart_scorer_checkpoint", "facebook/bart-large-cnn")
-        ) if CONFIG.get("use_bart", False) else None
+        self.bart_scorer = (
+            BARTScorer(
+                device=CONFIG.get("scorer_device", "cuda" if torch.cuda.is_available() else "cpu"),
+                checkpoint=CONFIG.get("bart_scorer_checkpoint", "facebook/bart-large-cnn")
+            ) if CONFIG.get("use_bart", False) else None
+        )
 
         print("MetricsEvaluator initialized.")
+
+    def _log_error(self, metric_name, error):
+        logger.error(f"Error calculating {metric_name}: {error}")
+
+    def calculate_and_log_metrics(self, generated_texts, references, comparison_label):
+        """
+        Calculate all similarity metrics for a single text comparison.
+        """
+        metrics = {}
+        try:
+            if self.bart_scorer:
+                scores = self.bart_scorer.score(generated_texts, references, batch_size=4)
+                avg_score = sum(scores) / len(scores) if scores else float('nan')
+                metrics[f"{comparison_label}_bart_avg_score"] = avg_score
+        except Exception as e:
+            self._log_error(f"{comparison_label}_bart", e)
+
+        try:
+            if self.bert_scorer:
+                _, _, f1 = self.bert_scorer.score(generated_texts, references)
+                metrics[f"{comparison_label}_bert_f1"] = f1.mean().item()
+        except Exception as e:
+            self._log_error(f"{comparison_label}_bert", e)
+
+        try:
+            if self.sacre_bleu:
+                references_nested = [[ref] for ref in references]
+                bleu_score = self.sacre_bleu.corpus_score(generated_texts, references_nested).score
+                metrics[f"{comparison_label}_bleu"] = bleu_score
+        except Exception as e:
+            self._log_error(f"{comparison_label}_bleu", e)
+
+        try:
+            rouge_scores = self.rouge.get_scores(generated_texts, references, avg=True)
+            for rouge_type in ["rouge-1", "rouge-2", "rouge-l"]:
+                metrics[f"{comparison_label}_{rouge_type}_f"] = rouge_scores[rouge_type]["f"]
+        except Exception as e:
+            self._log_error(f"{comparison_label}_rouge", e)
+
+        return metrics
+
+    def calculate_all_metrics(self, all_generated_texts, all_edited_endings, all_counterfactuals,
+                              all_initials, all_premises, all_original_endings):
+        """
+        Calculates metrics for all comparisons and aggregates them into a single dictionary.
+        """
+        all_metrics = {}
+
+        comparisons = [
+            ("prediction_edited", all_generated_texts, all_edited_endings),
+            ("prediction_cf", all_generated_texts, all_counterfactuals),
+            ("prediction_initial", all_generated_texts, all_initials),
+            ("prediction_original", all_generated_texts, all_original_endings),
+            ("edited_ending_cf", all_edited_endings, all_counterfactuals),
+            ("edited_ending_initial", all_edited_endings, all_initials),
+            ("edited_ending_original", all_edited_endings, all_original_endings),
+        ]
+
+        for label, texts_a, texts_b in comparisons:
+            if texts_b:
+                metrics = self.calculate_and_log_metrics(texts_a, texts_b, label)
+                all_metrics.update(metrics)
+
+        return all_metrics
 
     def calculate_score(self, generated_texts, references):
         """
@@ -60,6 +121,7 @@ class MetricsEvaluator:
             scores_tensor (torch.Tensor): A tensor of score values per example on the specified device.
         """
         score_metric = CONFIG.get("reward_metric", "rouge")
+        #Todo: Amelie, why this is cpu not gpu?
         scorer_device = CONFIG.get("scorer_device", "cpu")
 
         # Debugging prints for input and metric selection
