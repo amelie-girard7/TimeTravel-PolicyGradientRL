@@ -1,110 +1,112 @@
-# Enhancing Counterfactual Story Rewriting via Policy Gradient Optimization
+### Requirement Articulation for Enhancing Counterfactual Story Rewriting via Policy Gradient Optimization
 
-## Overview
-This project explores Reinforcement Learning (RL), specifically policy gradient (PG) methods, to improve model performance in counterfactual story rewriting tasks. We compare Maximum Likelihood Estimation (MLE) training alone versus a combination of MLE and PG optimization. This approach aims to enhance coherence and contextual relevance in story endings that incorporate specified counterfactual events.
+#### **Objective**
+To enhance the performance of counterfactual story rewriting by integrating Reinforcement Learning (RL) using Policy Gradient (PG) optimization alongside conventional Maximum Likelihood Estimation (MLE) training. The goal is to improve story coherence, contextual relevance, and alignment with specified counterfactual events in the rewritten story endings.
 
-## Experimental Structure
+---
 
-### Experiments
+#### **Key Goals**
+1. **Baseline Performance Evaluation**: Train and evaluate the model using only MLE to establish baseline performance.
+2. **Fine-Tuning with Policy Gradient**: Integrate PG training to optimize the model for coherence, fluency, and adherence to counterfactual constraints.
+3. **Metric-Driven Rewards**: Design and implement a robust reward system using multiple evaluation metrics to guide PG optimization.
+4. **Comparison of Training Paradigms**: Analyze the differences in performance between pure MLE training and a combined MLE + PG approach.
 
-- **Experiment 1**: Pure MLE Training
-  - The model is trained exclusively using MLE for 6 epochs, and the best model checkpoint is saved based on validation loss.
-  
-- **Experiment 2**: Mixed MLE + PG Training
-  - **Phase 1 (MLE Training)**: Train the model with MLE for 3 epochs, saving checkpoints throughout training.
-  - **Phase 2 (PG Fine-Tuning)**: Fine-tune the MLE-trained model with PG for an additional 3 epochs. During this phase, reward-based optimization guides the model towards improved coherence and counterfactual alignment in the generated story endings.
+---
 
-### Task Definition and Annotation Schema
+#### **Scope of Experiments**
 
-#### Task
+1. **Experiment 1: Pure MLE Training**
+   - Train the model for 6 epochs using cross-entropy loss.
+   - Select the best-performing model based on validation loss.
 
-The counterfactual story rewriting task requires generating an alternative story ending based on a hypothetical event (counterfactual) that contradicts the story’s initial event. The model is tasked with:
-1. Integrating the counterfactual event into the ending,
-2. Maintaining coherence and relevance in the new context, and
-3. Making minimal changes to the original ending while incorporating the counterfactual.
+2. **Experiment 2: Combined MLE + PG Training**
+   - **Phase 1**: Perform MLE training for 3 epochs and save intermediate checkpoints.
+   - **Phase 2**: Fine-tune the MLE-trained model using PG optimization for an additional 3 epochs, with a focus on reward maximization.
 
-The input for each story includes four components:
-1. **Premise** (\( X_P \)): The foundational story context.
-2. **Initial Event** (\( X_{IE} \)): The event leading to the original ending.
-3. **Original Ending** (\( Y_{OE} \)): The story’s original conclusion.
-4. **Counterfactual Event** (\( X_{CE} \)): A hypothetical event that contradicts the initial event.
+---
 
-The model generates an **Edited Ending** (\( \hat{Y}_{EE} \)) that adheres to the counterfactual event, ensuring story coherence and minimal alteration of the original ending.
+#### **Task Definition**
 
-#### Annotation Schema
+The **Counterfactual Story Rewriting Task** involves creating alternative story endings based on a hypothetical counterfactual event. The rewritten ending should:
+1. **Incorporate the counterfactual event** seamlessly into the story.
+2. **Maintain coherence** with the original premise and initial context.
+3. **Minimize unnecessary changes** to the original ending while adapting to the counterfactual event.
 
-The dataset includes pairs of **Original Endings** and **Edited Endings** based on specified counterfactual events. These annotations are formatted as follows:
+---
 
-- **Input Annotation**:
-  - A concatenated sequence of the **Premise, Initial Event, Original Ending, and Counterfactual Event**.
-  
-- **Output Annotation**:
-  - The target sequence is the **Edited Ending**, reflecting the modified story ending based on the counterfactual.
+#### **Dataset and Annotation**
 
-These annotated pairs serve two purposes:
-1. **MLE Training Phase**: They provide supervised training data.
-2. **Policy Gradient Fine-Tuning**: The reference Edited Ending is used to calculate reward scores, guiding the model towards alignment with the desired outcome during PG fine-tuning.
+- **Input Format**:
+  - A concatenated sequence consisting of:
+    1. **Premise**: Foundation of the story context.
+    2. **Initial Event**: The event leading to the original story ending.
+    3. **Original Ending**: The story's unaltered conclusion.
+    4. **Counterfactual Event**: The hypothetical scenario contradicting the initial event.
+    
+- **Output Format**:
+  - The **Edited Ending**, which integrates the counterfactual event into the story.
 
-## Model and Training Phases
+- **Usage**:
+  - MLE training uses these pairs for supervised learning.
+  - PG training uses the reference endings to calculate rewards, encouraging the model to align generated text with the annotated targets.
 
-The T5 model is used for sequence generation and trained in distinct phases for each experiment:
+---
 
-1. **MLE Training Phase (Experiment 1)**: The model is trained in a supervised manner using cross-entropy loss. This phase aims to align generated endings with reference annotations, setting the baseline performance.
-  
-2. **Policy Gradient Fine-Tuning Phase (Experiment 2)**: The model is further fine-tuned using PG, optimizing for maximum reward based on selected evaluation metrics. This phase enhances alignment with the counterfactual scenario and improves the quality of generated story endings.
+#### **Model and Training Design**
 
-## Reward Metrics in Policy Gradient Training
+1. **Model Architecture**:
+   - The T5 transformer model is used for text generation.
+   
+2. **Training Phases**:
+   - **MLE Training**: Supervised learning with cross-entropy loss.
+   - **PG Fine-Tuning**: Reward-based optimization using RL to refine the outputs.
 
-During PG fine-tuning, rewards are calculated based on multiple evaluation metrics. These metrics capture various aspects of textual coherence, fluency, and alignment with the reference endings. The reward score for each generated ending is derived by comparing it to the annotated edited ending, encouraging the model to produce outputs that closely match the target. The reward is adjusted by a baseline score to stabilize training.
+---
 
-### Metrics Used in Reward Calculation
+#### **Reward Metrics for PG Optimization**
 
-1. **ROUGE-L**
-   - **Description**: Measures the longest common subsequence (LCS) between the generated and reference text, assessing fluency and structural similarity.
-   - **Reward Calculation**: Provides a reward score based on LCS overlap, rewarding endings that structurally align with the reference.
-   - **Role in PG**: Encourages the model to maintain narrative structure and phrase similarity with the reference edited ending.
+1. **ROUGE-L**:
+   - Measures structural similarity between generated and reference texts.
+2. **BERTScore**:
+   - Captures semantic similarity through token embeddings.
+3. **BARTScore**:
+   - Evaluates fluency and logical sequence alignment.
+4. **SacreBLEU**:
+   - Measures precision in capturing key phrases and n-grams.
+5. **Counterfactual Reward Metrics (CRMs)**:
+   - Task-specific metrics to measure counterfactual alignment and minimal deviation from the original ending.
 
-2. **BERTScore**
-   - **Description**: Computes the semantic similarity of tokens between generated and reference texts using BERT embeddings, capturing deeper meaning beyond surface overlap.
-   - **Reward Calculation**: Assigns rewards based on token-level embedding similarity, accounting for synonyms and semantically equivalent phrasing.
-   - **Role in PG**: Helps the model prioritize semantic coherence, ensuring that the generated ending aligns with the story’s thematic content.
+---
 
-3. **BARTScore**
-   - **Description**: Uses a BART model to evaluate the coherence and relevance of generated text in comparison to the reference, measuring fluency and logical flow.
-   - **Reward Calculation**: Scores the generated text based on its probability under BART, rewarding coherent sequences.
-   - **Role in PG**: Guides the model to produce grammatically sound, contextually appropriate sequences that contribute to a smooth story progression.
+#### **Training Workflow for PG Optimization**
 
-4. **SacreBLEU**
-   - **Description**: Measures precision by comparing n-gram overlap between generated and reference texts, with adjustments for brevity.
-   - **Reward Calculation**: Generates a reward based on n-gram precision, rewarding the generated text for capturing key phrases from the reference.
-   - **Role in PG**: Incentivizes accuracy in capturing specific content and phrases from the reference edited ending.
+1. **Input Preparation**:
+   - Tokenize and prepare the concatenated input sequence for model processing.
+   
+2. **Forward Pass**:
+   - Generate logits for token probabilities and compute log probabilities for sequence generation.
 
-5. **Counterfactual Reward Metrics (CRMs)**
-   - **Description**: Task-specific metrics used to capture alignment with counterfactual elements.
-   - **Metric Formulation**:
-     - \( \Delta_{M_1} \): Measures the difference between the generated ending \( \hat{Y}_{EE} \) and both the edited ending \( Y_{EE} \) and the original ending \( Y_{OE} \).
-     - \( \Delta_{M_2} \): Evaluates the degree to which the generated ending incorporates the counterfactual event \( X_{CE} \).
-   - **Role in PG**: Directly rewards endings that accurately reflect the counterfactual context, guiding the model to adhere closely to the hypothetical scenario introduced by the counterfactual event.
+3. **Reward Calculation**:
+   - Use the defined metrics to assign reward scores to generated outputs.
+   
+4. **Loss Computation**:
+   - Compute policy gradient loss by combining log probabilities and rewards.
 
-## Policy Gradient Training: Detailed Steps
+---
 
-During PG fine-tuning, the model is trained to maximize expected rewards by adjusting the log probability of the generated sequence based on its reward score. This process includes the following steps:
+#### **Deliverables**
 
-1. **Input Preparation and Preprocessing**:
-   - Each input consists of a structured sequence combining the premise, initial event, original ending, and counterfactual event. This sequence is tokenized to produce input IDs and attention masks.
+1. A detailed comparative analysis of:
+   - Performance of MLE-only training.
+   - Improvements achieved with combined MLE + PG training.
+   
+2. Visualization of reward optimization trends during PG training.
 
-2. **Forward Pass and Logits Generation**:
-   - In the forward pass, the model generates logits for each token in the vocabulary. These logits are transformed into probabilities to guide token selection in the generated sequence.
+3. Insights into the impact of each metric on counterfactual alignment, coherence, and fluency.
 
-3. **Log Probability Calculation**:
-   - After converting logits to probabilities, log probabilities are computed for each token, facilitating stable gradient calculations.
+---
 
-4. **Reward Calculation**:
-   - Each generated sequence is scored against the reference edited ending using the selected metrics, and these reward scores are adjusted by a baseline to stabilize training.
+#### **Success Criteria**
 
-5. **Policy Gradient Loss Calculation**:
-   - The model’s loss is calculated based on the sequence’s log probability and weighted by the reward. This encourages the model to learn and maximize outputs that receive high reward scores, aligning with the target reference.
-
-## Experimental Setup
-
-
+- Quantifiable improvement in metrics like ROUGE-L, BERTScore, and Counterfactual Reward Metrics for edited story endings in PG fine-tuning.
+- Human evaluation showing enhanced coherence and adherence to counterfactual scenarios in generated outputs.
