@@ -178,7 +178,7 @@ def extract_epoch_from_checkpoint(checkpoint_path):
     return "Unknown"
 
 def main():
-    os.environ['CUDA_VISIBLE_DEVICES'] = '0'
+    os.environ['CUDA_VISIBLE_DEVICES'] = '1'
 
     # Define unique directory based on timestamp and phase
     phase = "mle" if CONFIG["mle_enabled"] else "pg"

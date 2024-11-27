@@ -110,3 +110,17 @@ The **Counterfactual Story Rewriting Task** involves creating alternative story 
 
 - Quantifiable improvement in metrics like ROUGE-L, BERTScore, and Counterfactual Reward Metrics for edited story endings in PG fine-tuning.
 - Human evaluation showing enhanced coherence and adherence to counterfactual scenarios in generated outputs.
+---
+
+#### **Todo**
+
+1. The ablated TimeTravel experiment:
+Input: premise, initial, counterfactual; Output: edited ending
+
+2. The ART experiment:
+First, you have to prepare the dataset by browsing the label in the ART dataset to see which hypothesis is correct and which is incorrect for each sample.
+Then:
+Input: obs1, incorrect_hypothesis, correct_hypothesis; Output: obs2.
+Input: premise, incorrect_hypothesis, correct_hypothesis; Output: obs2.
+
+As models, only one model each for MLE3, MLE6, and MLE3+PG3; the one with the best configuration from the main experiment.

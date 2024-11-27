@@ -13,14 +13,14 @@ CONFIG = {
     "models_dir": ROOT_DIR / "models",  # Directory to save models
     "logs_dir": ROOT_DIR / "logs",  # Directory for logs
     "results_dir": ROOT_DIR / "results",  # Directory for results (e.g., validation details)
-    "dataset_type": "ART",  # Options: "ART", "TimeTravel", "AblatedTimeTravel"
+    "dataset_type": "TimeTravel",  # Options: "ART", "TimeTravel", "AblatedTimeTravel"
 
-    # Timetravel sample datasets
+    # Sample Timetravel sample datasets
     "train_file": "train_supervised_small_sample.json",
     "dev_file": "dev_data_sample.json",
     "test_file": "test_data_sample.json",
 
-    # Sample Timetravel  datasets
+    # Timetravel  datasets
     #"train_file": "train_supervised_small.json",
     #"dev_file": "dev_data.json",
     #"test_file": "test_data.json", 
@@ -69,7 +69,7 @@ CONFIG = {
     # Additional configuration for scoring metrics 
     "use_bert": True,  # Disable BERT scorer
     "bert_scorer_model_type": "microsoft/deberta-xlarge-mnli",  # Default BERT model for scorer 
-    "scorer_device": "cuda:0",  # Device for the scorer
+    "scorer_device": "cuda:1",  # Device for the scorer
     "bert_scorer_batch_size": 4,  # Batch size for BERT scorer 
 
     "use_bleu": True,  # Disable BLEU scorer,
