@@ -2,42 +2,36 @@ _wandb:
     value:
         cli_version: 0.18.3
         m:
-            - "1": trainer/global_step
-              "6":
-                - 3
-              "7": []
-            - "1": validation_pg_loss
-              "5": 1
+            - "1": epoch
+              "5": 2
               "6":
                 - 1
                 - 3
               "7": []
-            - "1": validation_pg_reward_mean
-              "5": 1
+            - "1": trainer/global_step
+              "6":
+                - 3
+              "7": []
+            - "1": training_mle_loss_epoch
+              "5": 2
+              "6":
+                - 1
+                - 3
+              "7": []
+            - "1": training_mle_score_mean_epoch
+              "5": 2
+              "6":
+                - 1
+                - 3
+              "7": []
+            - "1": validation_mle_loss
+              "5": 2
               "6":
                 - 1
                 - 3
               "7": []
             - "1": validation_overall_score
-              "5": 1
-              "6":
-                - 1
-                - 3
-              "7": []
-            - "1": epoch
-              "5": 1
-              "6":
-                - 1
-                - 3
-              "7": []
-            - "1": training_pg_loss_epoch
-              "5": 1
-              "6":
-                - 1
-                - 3
-              "7": []
-            - "1": training_pg_reward_mean_epoch
-              "5": 1
+              "5": 2
               "6":
                 - 1
                 - 3
@@ -84,10 +78,12 @@ bert_scorer_model_type:
     value: microsoft/deberta-xlarge-mnli
 data_dir:
     value: /data/agirard/Projects/TimeTravel-PolicyGradientRL/data/transformed
+dataset_type:
+    value: AblatedTimeTravel
 dev_file:
     value: dev_data_sample.json
 file_label:
-    value: _pg
+    value: _mle
 learning_rate:
     value: 2e-05
 logs_dir:
@@ -99,13 +95,13 @@ max_length:
 mle_checkpoint_path:
     value: null
 mle_enabled:
-    value: false
+    value: true
 mle_epochs:
     value: 1
 mle_from_checkpoint:
     value: false
 model_dir:
-    value: /data/agirard/Projects/TimeTravel-PolicyGradientRL/models/pg_2024-11-27-10
+    value: /data/agirard/Projects/TimeTravel-PolicyGradientRL/models/mle_2024-11-27-15
 model_name:
     value: google/flan-t5-base
 models_dir:
@@ -117,7 +113,7 @@ output_attentions:
 pg_checkpoint_path:
     value: null
 pg_enabled:
-    value: true
+    value: false
 pg_epochs:
     value: 1
 pg_from_checkpoint:

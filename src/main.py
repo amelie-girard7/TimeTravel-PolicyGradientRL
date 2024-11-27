@@ -186,6 +186,9 @@ def main():
     model_dir = CONFIG["models_dir"] / f"{phase}_{model_timestamp}"
     model_dir.mkdir(parents=True, exist_ok=True)
 
+    dataset_type = CONFIG.get("dataset_type", "TimeTravel")  # Default fallback is "TimeTravel"
+    print(f"Selected dataset type: {dataset_type}")  # Debug dataset type
+
     # Setup WandB logger
     wandb_logger = WandbLogger(
         project="counterfactualStory",
@@ -196,7 +199,13 @@ def main():
 
     # Setup tokenizer and dataloaders
     tokenizer = T5Tokenizer.from_pretrained(CONFIG["model_name"], legacy=False)
-    dataloaders = create_dataloaders(CONFIG["data_dir"], tokenizer, CONFIG["batch_size"], CONFIG["num_workers"])
+    dataloaders = create_dataloaders(
+        CONFIG["data_dir"], 
+        tokenizer, 
+        CONFIG["batch_size"], 
+        CONFIG["num_workers"], 
+        dataset_type=dataset_type  # Explicitly pass the dataset_type
+    )
     train_key, dev_key, test_key = CONFIG["train_file"].split('.')[0], CONFIG["dev_file"].split('.')[0], CONFIG["test_file"].split('.')[0]
 
     model = None
