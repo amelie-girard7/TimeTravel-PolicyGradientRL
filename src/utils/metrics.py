@@ -44,8 +44,29 @@ class MetricsEvaluator:
 
         print("MetricsEvaluator initialized.")
 
-    def _log_error(self, metric_name, error):
-        logger.error(f"Error calculating {metric_name}: {error}")
+    def calculate_all_metrics(self, all_generated_texts, all_edited_endings, all_counterfactuals,
+                              all_initials, all_premises, all_original_endings):
+        """
+        Calculates metrics for all comparisons and aggregates them into a single dictionary.
+        """
+        all_metrics = {}
+
+        comparisons = [
+            ("prediction_edited", all_generated_texts, all_edited_endings),
+            ("prediction_cf", all_generated_texts, all_counterfactuals),
+            ("prediction_initial", all_generated_texts, all_initials),
+            ("prediction_original", all_generated_texts, all_original_endings),
+            ("edited_ending_cf", all_edited_endings, all_counterfactuals),
+            ("edited_ending_initial", all_edited_endings, all_initials),
+            ("edited_ending_original", all_edited_endings, all_original_endings),
+        ]
+
+        for label, texts_a, texts_b in comparisons:
+            if texts_b:
+                metrics = self.calculate_and_log_metrics(texts_a, texts_b, label)
+                all_metrics.update(metrics)
+
+        return all_metrics
 
     def calculate_and_log_metrics(self, generated_texts, references, comparison_label):
         """
@@ -83,30 +104,6 @@ class MetricsEvaluator:
             self._log_error(f"{comparison_label}_rouge", e)
 
         return metrics
-
-    def calculate_all_metrics(self, all_generated_texts, all_edited_endings, all_counterfactuals,
-                              all_initials, all_premises, all_original_endings):
-        """
-        Calculates metrics for all comparisons and aggregates them into a single dictionary.
-        """
-        all_metrics = {}
-
-        comparisons = [
-            ("prediction_edited", all_generated_texts, all_edited_endings),
-            ("prediction_cf", all_generated_texts, all_counterfactuals),
-            ("prediction_initial", all_generated_texts, all_initials),
-            ("prediction_original", all_generated_texts, all_original_endings),
-            ("edited_ending_cf", all_edited_endings, all_counterfactuals),
-            ("edited_ending_initial", all_edited_endings, all_initials),
-            ("edited_ending_original", all_edited_endings, all_original_endings),
-        ]
-
-        for label, texts_a, texts_b in comparisons:
-            if texts_b:
-                metrics = self.calculate_and_log_metrics(texts_a, texts_b, label)
-                all_metrics.update(metrics)
-
-        return all_metrics
 
     def calculate_score(self, generated_texts, references):
         """
@@ -322,3 +319,6 @@ class MetricsEvaluator:
                     bleu_scores[label] = 'N/A'
 
         return bleu_scores
+
+    def _log_error(self, metric_name, error):
+        logger.error(f"Error calculating {metric_name}: {error}")

@@ -201,14 +201,14 @@ class FlanT5FineTuner(pl.LightningModule):
             edited_endings = [str(ee) for ee in batch['edited_ending']]
 
             # Filter empty/generated texts
-            non_empty_indices = [i for i, text in enumerate(generated_texts) if text.strip()]
-            if not non_empty_indices:
-                logger.warning("All generated texts are empty in this batch; skipping ROUGE calculation.")
-                return torch.tensor(0.0, device=self.device)
+            #non_empty_indices = [i for i, text in enumerate(generated_texts) if text.strip()]
+            #if not non_empty_indices:
+            #    logger.warning("All generated texts are empty in this batch; skipping ROUGE calculation.")
+            #    return torch.tensor(0.0, device=self.device)
 
             # Filter lists to only include non-empty elements
-            generated_texts = [generated_texts[i] for i in non_empty_indices]
-            edited_endings = [edited_endings[i] for i in non_empty_indices]
+            #generated_texts = [generated_texts[i] for i in non_empty_indices]
+            #edited_endings = [edited_endings[i] for i in non_empty_indices]
 
             # Calculate sentence-level scores
             scores = self.metrics_evaluator.calculate_score(generated_texts, edited_endings).detach()
