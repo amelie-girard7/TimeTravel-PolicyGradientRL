@@ -38,7 +38,6 @@ def setup_model(model_dir, file_label="", checkpoint_path=None, use_policy_gradi
     model.use_policy_gradient = use_policy_gradient
     return model
 
-
 def setup_trainer(max_epochs, checkpoint_callback, wandb_logger):
     """
     Sets up the PyTorch Lightning Trainer with W&B logger and checkpointing.
@@ -55,7 +54,6 @@ def setup_trainer(max_epochs, checkpoint_callback, wandb_logger):
     )
     logger.info(f"Trainer setup complete for {max_epochs} epochs.")
     return trainer
-
 
 def evaluate_and_save(model_dir, test_loader, best_checkpoint, file_label, best_epoch):
     logger.info(f"Evaluating data for best epoch {best_epoch} using checkpoint: {best_checkpoint}")
@@ -167,7 +165,6 @@ def evaluate_and_save(model_dir, test_loader, best_checkpoint, file_label, best_
     logger.info(f"Evaluation metrics for epoch {best_epoch} saved to {metrics_file}")
     print(f"Evaluation metrics for epoch {best_epoch} saved to {metrics_file}")
 
-
 def extract_epoch_from_checkpoint(checkpoint_path):
     """
     Extracts the epoch number from the checkpoint file name.
@@ -179,7 +176,6 @@ def extract_epoch_from_checkpoint(checkpoint_path):
     logger.warning(f"Could not extract epoch from checkpoint path: {checkpoint_path}")
     print(f"Could not extract epoch from checkpoint path: {checkpoint_path}")
     return "Unknown"
-
 
 def main():
     os.environ['CUDA_VISIBLE_DEVICES'] = '0'

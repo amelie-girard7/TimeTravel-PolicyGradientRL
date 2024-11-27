@@ -2,42 +2,42 @@ _wandb:
     value:
         cli_version: 0.18.3
         m:
-            - "1": validation_overall_score
-              "5": 2
-              "6":
-                - 1
-                - 3
-              "7": []
             - "1": trainer/global_step
               "6":
                 - 3
               "7": []
-            - "1": epoch
-              "5": 2
-              "6":
-                - 1
-                - 3
-              "7": []
             - "1": validation_pg_loss
-              "5": 2
-              "6":
-                - 1
-                - 3
-              "7": []
-            - "1": training_pg_loss_epoch
-              "5": 2
-              "6":
-                - 1
-                - 3
-              "7": []
-            - "1": training_pg_reward_mean_epoch
-              "5": 2
+              "5": 1
               "6":
                 - 1
                 - 3
               "7": []
             - "1": validation_pg_reward_mean
-              "5": 2
+              "5": 1
+              "6":
+                - 1
+                - 3
+              "7": []
+            - "1": validation_overall_score
+              "5": 1
+              "6":
+                - 1
+                - 3
+              "7": []
+            - "1": epoch
+              "5": 1
+              "6":
+                - 1
+                - 3
+              "7": []
+            - "1": training_pg_loss_epoch
+              "5": 1
+              "6":
+                - 1
+                - 3
+              "7": []
+            - "1": training_pg_reward_mean_epoch
+              "5": 1
               "6":
                 - 1
                 - 3
@@ -101,11 +101,11 @@ mle_checkpoint_path:
 mle_enabled:
     value: false
 mle_epochs:
-    value: 3
+    value: 1
 mle_from_checkpoint:
     value: false
 model_dir:
-    value: /data/agirard/Projects/TimeTravel-PolicyGradientRL/models/pg_2024-11-25-16
+    value: /data/agirard/Projects/TimeTravel-PolicyGradientRL/models/pg_2024-11-27-10
 model_name:
     value: google/flan-t5-base
 models_dir:
@@ -115,13 +115,13 @@ num_workers:
 output_attentions:
     value: false
 pg_checkpoint_path:
-    value: /data/agirard/Projects/TimeTravel-PolicyGradientRL/models/mle_2024-11-25-16/mle_checkpoint_epoch=epoch=2-val_loss=validation_mle_loss=12.17.ckpt
+    value: null
 pg_enabled:
     value: true
 pg_epochs:
-    value: 3
+    value: 1
 pg_from_checkpoint:
-    value: true
+    value: /data/agirard/Projects/TimeTravel-PolicyGradientRL/models/mle_2024-11-27-09/mle_checkpoint_epoch=epoch=0-val_loss=validation_mle_loss=13.38.ckpt
 results_dir:
     value: /data/agirard/Projects/TimeTravel-PolicyGradientRL/results
 reward_metric:

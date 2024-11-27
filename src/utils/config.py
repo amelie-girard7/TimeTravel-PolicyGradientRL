@@ -43,15 +43,15 @@ CONFIG = {
     "mle_enabled": False,  # Enable MLE training
     "mle_from_checkpoint": False,  # Start training from scratch (no checkpoint)
     "mle_checkpoint_path": None,  # No checkpoint path since we start from scratch
-    "mle_epochs": 3,  # Number of epochs to train with MLE
+    "mle_epochs": 1,  # Number of epochs to train with MLE
 
     # PG Phase configurations (disabled in this experiment)
     "pg_enabled": True,  # Disable policy gradient training (PG phase)
-    "pg_from_checkpoint": True,  # Start PG training from the best MLE checkpoint, not a separate checkpoint
-    "pg_checkpoint_path": '/data/agirard/Projects/TimeTravel-PolicyGradientRL/models/mle_2024-11-25-16/mle_checkpoint_epoch=epoch=2-val_loss=validation_mle_loss=12.17.ckpt',   # Leave as None to use the best MLE checkpoint
-    "pg_epochs": 3,  # Number of epochs to fine-tune with PG
+    "pg_from_checkpoint": '/data/agirard/Projects/TimeTravel-PolicyGradientRL/models/mle_2024-11-27-09/mle_checkpoint_epoch=epoch=0-val_loss=validation_mle_loss=13.38.ckpt',  # Start PG training from the best MLE checkpoint, not a separate checkpoint
+    "pg_checkpoint_path": None,   # Leave as None to use the best MLE checkpoint
+    "pg_epochs": 1,  # Number of epochs to fine-tune with PG
 
-    # Reward-based training configurations
+    # PG Phase Reward-based training configurations
     "reward_metric": "bart",   ## Primary reward metric for PG (e.g., "rouge", "bert", "bart") (default to "rouge")
     "baseline_score": 0.5,  # Baseline score for PG (used to calculate rewards)
   
