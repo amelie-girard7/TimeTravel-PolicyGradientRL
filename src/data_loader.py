@@ -10,7 +10,7 @@ class CustomJSONDataset(Dataset):
     A custom PyTorch Dataset class designed for loading and preprocessing data stored in JSON format.
     Supports tokenization and preprocessing for model training and evaluation.
     """
-    def __init__(self, file_path, tokenizer):
+    def __init__(self, file_path, tokenizer, dataset_type="TimeTravel"):
         """
         Initializes the dataset object.
 
@@ -18,6 +18,7 @@ class CustomJSONDataset(Dataset):
             file_path (str): Path to the JSON file containing the data.
             tokenizer (T5Tokenizer): The tokenizer to use for preprocessing.
         """
+        print(f"Initializing CustomJSONDataset with dataset_type: {dataset_type}")
         # Attempt to load and preprocess the data from the provided JSON file
         try:
             data = pd.read_json(file_path, lines=True)
@@ -27,10 +28,11 @@ class CustomJSONDataset(Dataset):
             raise FileNotFoundError(f"File not found: {file_path}")
 
         self.tokenizer = tokenizer
+        self.data_type = dataset_type
 
         # Preprocess each row of the data using the provided tokenizer
-        self.processed_data = data.apply(lambda row: preprocess_data(row, self.tokenizer), axis=1, result_type='expand')
-        print(self.processed_data.head())  # Debug print to check the structure of the processed data
+        self.processed_data = data.apply(lambda row: preprocess_data(row, self.tokenizer, dataset_type=dataset_type), axis=1, result_type='expand')
+        print(f"First few rows of processed data: {self.processed_data.head()}")
 
     def __len__(self):
         """Returns the total number of items in the dataset."""
@@ -49,7 +51,7 @@ class CustomJSONDataset(Dataset):
         item = self.processed_data.iloc[idx]
         return item
 
-def create_dataloaders(data_path, tokenizer, batch_size, num_workers):
+def create_dataloaders(data_path, tokenizer, batch_size, num_workers, dataset_type="TimeTravel"):
     """
     Creates DataLoader instances for each dataset specified by the configuration.
 
@@ -58,21 +60,25 @@ def create_dataloaders(data_path, tokenizer, batch_size, num_workers):
         tokenizer (T5Tokenizer): The tokenizer to use for preprocessing the data.
         batch_size (int): The number of samples per batch.
         num_workers (int): The number of worker threads to use for loading data.
+        dataset_type (str): Specifies the dataset tpe (eg. "ART", "TimeTravel","AblatedTimeTravel").
 
     Returns:
         dict: A dictionary of DataLoader objects, keyed by dataset type ('train', 'dev', 'test').
     """
+
+    print(f"Creating dataloaders for dataset_type: {dataset_type}")  # Debug dataset type
+
     file_names = [CONFIG["train_file"], CONFIG["dev_file"], CONFIG["test_file"]]
 
     dataloaders = {}
     for file_name in file_names:
         file_path = Path(data_path) / file_name
-        print(f"Checking file: {file_path}")
+        print(f"Loading file: {file_path} for dataset_type: {dataset_type}")  # Debug file path
         if not file_path.exists():
             raise FileNotFoundError(f"{file_path} does not exist.")
         
         # Create an instance of the dataset for each data file
-        dataset = CustomJSONDataset(file_path, tokenizer)
+        dataset = CustomJSONDataset(file_path, tokenizer, dataset_type=dataset_type)
 
         # Determine whether to shuffle: shuffle only for training
         shuffle = file_name == CONFIG["train_file"]

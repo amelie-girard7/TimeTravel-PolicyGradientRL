@@ -55,24 +55,47 @@ def calculate_differential_weights(tokenized_labels, tokenizer, differences, hig
         
         return differential_weights    
 
-def preprocess_data(row, tokenizer):
+def preprocess_data(row, tokenizer, dataset_type="TimeTravel"):
     """
     Prepares a single row of data for model input by tokenizing the text fields.
-    It constructs the input sequence by combining story parts and tokenizes them.
+
+    Args:
+        row (dict): A single row of data containing the fields required for the input.
+        tokenizer (Tokenizer): The tokenizer to use for tokenizing the text fields.
+        dataset_type (str): Specifies the type of dataset to determine preprocessing logic.
+            Options: "ART", "TimeTravel", "AblatedTimeTravel".
+
+    Returns:
+        dict: A dictionary containing tokenized input, attention masks, and labels.
     """
-    logger.debug("Preprocessing data row...")
-    
     try:
-        # Define the separator token specific to the T5 model.
         separator_token = "</s>"
-        
-        # Construct the input sequence with all components separated by the model-specific separator token.
-        input_sequence = (
-            f"{row['premise']}"
-            f"{row['initial']}"
-            f"{row['original_ending']} {separator_token}"
-            f"{row['premise']} {row['counterfactual']}"
-        )
+
+        if dataset_type in {"ART", "AblatedTimeTravel"}:
+            # Input = premise + initial + counterfactual; Output = edited_ending
+            input_sequence = (
+                f"{row['premise']}"
+                f"{row['initial']} {separator_token}"
+                f"{row['premise']} {row['counterfactual']}"
+            )
+            target_sequence = row['edited_ending']
+            print(f"Input Sequence (ART/AblatdTimeTravel):{input_sequence}")
+            print(f"Target Sequence: {target_sequence}")
+
+        elif dataset_type == "TimeTravel":
+            # TimeTravel Dataset: Input = premise + initial + original_ending + counterfactual; Output = edited_ending
+            input_sequence = (
+                f"{row['premise']}"
+                f"{row['initial']}"
+                f"{row['original_ending']} {separator_token}"
+                f"{row['premise']} {row['counterfactual']}"
+            )
+            target_sequence = row['edited_ending']
+            print(f"Input Sequence (Timetravel sequence):{input_sequence}")
+            print(f"Target Sequence: {target_sequence}")
+
+        else:
+            raise ValueError(f"Unsupported dataset type: {dataset_type}")
 
         
         # Tokenize the input sequence with truncation to max_length and no padding here.
@@ -84,7 +107,7 @@ def preprocess_data(row, tokenizer):
         tokenized_ending = tokenizer.encode_plus(
             row['edited_ending'], truncation=True, return_tensors="pt", max_length=CONFIG["max_length"]
         )
-        
+                
         # Calculate differential weights based on the list of differences provided for each token. This highlights tokens
         # that are directly associated with the differences, aiming to adjust the model's focus and learning priority.
         differential_weights = calculate_differential_weights(
@@ -108,13 +131,16 @@ def preprocess_data(row, tokenizer):
             # Include non-tokenized data for metric calculations.
             'premise': row['premise'],
             'initial': row['initial'],
-            'original_ending': row['original_ending'],
             'counterfactual': row['counterfactual'],
-            'edited_ending': row['edited_ending']
+            'edited_ending': row['edited_ending'],
+            # Include original_ending only if available
+            **({'original_ending': row['original_ending']} if 'original_ending' in row else {})
         }
     except Exception as e:
         logger.error(f"Error in preprocess_data: {e}")
         return None
+    
+
 
 def collate_fn(batch, pad_token_id=0,attention_pad_value=0):
     """

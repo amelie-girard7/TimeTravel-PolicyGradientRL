@@ -13,16 +13,27 @@ CONFIG = {
     "models_dir": ROOT_DIR / "models",  # Directory to save models
     "logs_dir": ROOT_DIR / "logs",  # Directory for logs
     "results_dir": ROOT_DIR / "results",  # Directory for results (e.g., validation details)
+    "dataset_type": "ART",  # Options: "ART", "TimeTravel", "AblatedTimeTravel"
 
-    # Sample File names for training, validation, and test datasets
+    # Timetravel sample datasets
     "train_file": "train_supervised_small_sample.json",
     "dev_file": "dev_data_sample.json",
     "test_file": "test_data_sample.json",
 
-    # File names for training, validation, and test datasets
+    # Sample Timetravel  datasets
     #"train_file": "train_supervised_small.json",
     #"dev_file": "dev_data.json",
-    #"test_file": "test_data.json",    
+    #"test_file": "test_data.json", 
+
+    # Sample Art dataset
+    #"train_file": "art_train_data_sample.json",
+    #"dev_file": "art_dev_data_sample.json",
+    #"test_file": "art_test_data_sample.json", 
+    # 
+    # Art dataset
+    #"train_file": "art_train_data.json",
+    #"dev_file": "art_dev_data.json",
+    #"test_file": "art_test_data.json",    
 
     # Model and training configurations
     "model_name": os.getenv('MODEL_NAME', "google/flan-t5-base"),  # Hugging Face model to load
@@ -40,13 +51,13 @@ CONFIG = {
     "output_attentions": False,  # Set to True to output attentions from the model (optional)
 
     # MLE Phase configurations
-    "mle_enabled": False,  # Enable MLE training
+    "mle_enabled": True,  # Enable MLE training
     "mle_from_checkpoint": False,  # Start training from scratch (no checkpoint)
     "mle_checkpoint_path": None,  # No checkpoint path since we start from scratch
     "mle_epochs": 1,  # Number of epochs to train with MLE
 
     # PG Phase configurations (disabled in this experiment)
-    "pg_enabled": True,  # Disable policy gradient training (PG phase)
+    "pg_enabled": False,  # Disable policy gradient training (PG phase)
     "pg_from_checkpoint": '/data/agirard/Projects/TimeTravel-PolicyGradientRL/models/mle_2024-11-27-09/mle_checkpoint_epoch=epoch=0-val_loss=validation_mle_loss=13.38.ckpt',  # Start PG training from the best MLE checkpoint, not a separate checkpoint
     "pg_checkpoint_path": None,   # Leave as None to use the best MLE checkpoint
     "pg_epochs": 1,  # Number of epochs to fine-tune with PG
