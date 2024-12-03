@@ -25,10 +25,12 @@ class FlanT5FineTuner(pl.LightningModule):
         Initializes the fine-tuner with the specified model and tokenizer.
         """
         super().__init__()
-        self.save_hyperparameters()  # Saves model_name and model_dir as hyperparameters for reference
+        # Save only essential hyperparameters
+        self.save_hyperparameters('model_name')
 
-        # Convert model_dir to a Path object for consistent file handling
-        model_dir = Path(model_dir)
+        # Store model_dir and file_label as instance variables
+        self.model_dir = Path(model_dir)
+        self.file_label = file_label
 
         # Load T5 model and tokenizer with configurations specified in CONFIG
         config = T5Config.from_pretrained(
@@ -39,8 +41,8 @@ class FlanT5FineTuner(pl.LightningModule):
         self.tokenizer = T5Tokenizer.from_pretrained(model_name)
 
         # Set unique file paths using `file_label` to prevent overwriting
-        self.val_csv_file_path = model_dir / f"validation_details{file_label}.csv"
-        self.test_csv_file_path = model_dir / f"test_details{file_label}.csv"
+        self.val_csv_file_path = self.model_dir / f"validation_details{self.file_label}.csv"
+        self.test_csv_file_path = self.model_dir / f"test_details{self.file_label}.csv"
 
         # Initialize buffers for validation
         self.epoch_validation_details = []  # Storage for each validation epoch
