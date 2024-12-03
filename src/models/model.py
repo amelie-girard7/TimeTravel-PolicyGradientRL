@@ -41,7 +41,14 @@ class FlanT5FineTuner(pl.LightningModule):
         # Set unique file paths using `file_label` to prevent overwriting
         self.val_csv_file_path = model_dir / f"validation_details{file_label}.csv"
         self.test_csv_file_path = model_dir / f"test_details{file_label}.csv"
+
+        # Initialize buffers for validation
         self.epoch_validation_details = []  # Storage for each validation epoch
+        self.epoch_scores = []  # Validation scores buffer
+
+        # Initialize buffers for testing
+        self.epoch_test_details = []  # Storage for each test epoch
+        self.epoch_test_scores = []  # Test scores buffer
 
         # Initialize MetricsEvaluator to handle custom scoring for rewards
         self.metrics_evaluator = MetricsEvaluator()
@@ -139,214 +146,278 @@ class FlanT5FineTuner(pl.LightningModule):
         # Sum log probabilities across the sequence dimension
         sequence_log_prob_sum = token_log_probs.sum(dim=1)
 
+
         # Handle special case for BART (negative rewards)
         if CONFIG.get("reward_metric") == "bart":
-            rewards = -rewards  # Flip the sign of rewards for BART
+            rewards = rewards + 4  # add a Baseline to move to the positif size but you keep the magnitude
+            # Try with 3 and 5
 
         # Calculate policy gradient loss
         return -(rewards * sequence_log_prob_sum).mean()
 
     def training_step(self, batch, batch_idx):
+        """
+        Processes a batch during the training phase. Routes to PG or MLE logic based on mode.
+        """
         input_ids, attention_mask, labels = batch['input_ids'], batch['attention_mask'], batch['labels']
 
         if self.use_policy_gradient:
-            # Policy Gradient (PG) training mode
-            generated_tokens, logits = self.forward(input_ids=input_ids, attention_mask=attention_mask)
-            generated_texts = self.tokenizer.batch_decode(generated_tokens, skip_special_tokens=True)
-            edited_endings = [str(ee) for ee in batch['edited_ending']]
-
-            # Calculate rewards for generated texts
-            scores = self.metrics_evaluator.calculate_score(generated_texts, edited_endings).detach()
-            rewards = scores - CONFIG["baseline_score"]
-
-            # Calculate PG loss
-            pg_loss = self.calculate_policy_gradient_loss(generated_tokens, logits, rewards)
-            print(f'pg_loss -> {pg_loss}')
-            
-            # Log Policy Gradient-specific training metrics
-            self.log('training_pg_loss', pg_loss, on_step=True, on_epoch=True, prog_bar=True, logger=True)
-            self.log('training_pg_reward_mean', rewards.mean(), on_step=True, on_epoch=True, prog_bar=True, logger=True)
-            return pg_loss  # Return PG loss for optimization
-
+            return self._training_step_pg(batch, input_ids, attention_mask)
         else:
-            # Maximum Likelihood Estimation (MLE) training mode
-            outputs = self.forward(input_ids=input_ids, attention_mask=attention_mask, labels=labels)
-            masked_logits = self.apply_vocab_masking(outputs.logits)  # Apply masking to logits
+            return self._training_step_mle(batch, input_ids, attention_mask, labels)
 
-            # Check the 'use_custom_loss' config and whether 'differential_weights' is in the batch
-            if CONFIG['use_custom_loss'] and 'differential_weights' in batch:
-                mle_train_loss = self.custom_loss(masked_logits, batch['labels'], batch['differential_weights'])
-            else:
-                mle_train_loss = outputs.loss
-            
-            # Log MLE training loss
-            self.log('training_mle_loss', mle_train_loss, on_epoch=True, prog_bar=True, logger=True)
+    def _training_step_pg(self, batch, input_ids, attention_mask):
+        """
+        Training-specific logic for Policy Gradient (PG) mode.
+        """
+        # Forward pass
+        generated_tokens, logits = self.forward(input_ids=input_ids, attention_mask=attention_mask)
+        generated_texts = self.tokenizer.batch_decode(generated_tokens, skip_special_tokens=True)
+        edited_endings = [str(ee) for ee in batch['edited_ending']]
 
-            # Calculate and log average score for generated texts
-            generated_texts = self.tokenizer.batch_decode(masked_logits.argmax(-1), skip_special_tokens=True)
-            edited_endings = [str(ee) for ee in batch['edited_ending']]
-            scores = self.metrics_evaluator.calculate_score(generated_texts, edited_endings).detach()
-            score_mean = scores.mean()
-            self.log('training_mle_score_mean', score_mean, on_epoch=True, prog_bar=True, logger=True)
-            
-            return mle_train_loss  # Return MLE loss for optimization
+        # Calculate rewards for generated texts
+        scores = self.metrics_evaluator.calculate_score(generated_texts, edited_endings).detach()
+        rewards = scores - CONFIG["baseline_score"]
+
+        # Calculate PG loss
+        pg_loss = self.calculate_policy_gradient_loss(generated_tokens, logits, rewards)
+        print(f'pg_loss -> {pg_loss}')
+
+        # Log Policy Gradient-specific training metrics
+        self.log('training_pg_loss', pg_loss, on_step=True, on_epoch=True, prog_bar=True, logger=True)
+        self.log('training_pg_reward_mean', rewards.mean(), on_step=True, on_epoch=True, prog_bar=True, logger=True)
+
+        return pg_loss  # Return PG loss for optimization
+
+    def _training_step_mle(self, batch, input_ids, attention_mask, labels):
+        """
+        Training-specific logic for Maximum Likelihood Estimation (MLE) mode.
+        """
+        # Forward pass
+        outputs = self.forward(input_ids=input_ids, attention_mask=attention_mask, labels=labels)
+        masked_logits = self.apply_vocab_masking(outputs.logits)  # Apply masking to logits
+
+        # Calculate MLE loss
+        if CONFIG['use_custom_loss'] and 'differential_weights' in batch:
+            mle_train_loss = self.custom_loss(masked_logits, batch['labels'], batch['differential_weights'])
+        else:
+            mle_train_loss = outputs.loss
+
+        # Log MLE training loss
+        self.log('training_mle_loss', mle_train_loss, on_step=True, on_epoch=True, prog_bar=True, logger=True)
+
+        # Decode and log scores for generated texts
+        generated_texts = self.tokenizer.batch_decode(masked_logits.argmax(-1), skip_special_tokens=True)
+        edited_endings = [str(ee) for ee in batch['edited_ending']]
+        scores = self.metrics_evaluator.calculate_score(generated_texts, edited_endings).detach()
+        score_mean = scores.mean()
+        self.log('training_mle_score_mean', score_mean, on_step=True, on_epoch=True, prog_bar=True, logger=True)
+
+        return mle_train_loss  # Return MLE loss for optimization
 
     def validation_step(self, batch, batch_idx):
+        """
+        Processes a batch during the validation phase. Routes to PG or MLE logic based on mode.
+        """
         input_ids, attention_mask, labels = batch['input_ids'], batch['attention_mask'], batch['labels']
-        
+        print(f"Validation Step: Processing batch {batch_idx}")
+
         if self.use_policy_gradient:
-            # Policy Gradient (PG) validation mode
-            generated_tokens, logits = self.forward(input_ids=input_ids, attention_mask=attention_mask)
-            generated_texts = self.tokenizer.batch_decode(generated_tokens, skip_special_tokens=True)
-            edited_endings = [str(ee) for ee in batch['edited_ending']]
-
-            # Filter empty/generated texts
-            #non_empty_indices = [i for i, text in enumerate(generated_texts) if text.strip()]
-            #if not non_empty_indices:
-            #    logger.warning("All generated texts are empty in this batch; skipping ROUGE calculation.")
-            #    return torch.tensor(0.0, device=self.device)
-
-            # Filter lists to only include non-empty elements
-            #generated_texts = [generated_texts[i] for i in non_empty_indices]
-            #edited_endings = [edited_endings[i] for i in non_empty_indices]
-
-            # Calculate sentence-level scores
-            scores = self.metrics_evaluator.calculate_score(generated_texts, edited_endings).detach()
-            self.epoch_scores.extend(scores.tolist())  # Save sentence-level scores for the entire dataset
-
-            # Calculate rewards for PG loss
-            rewards = scores - CONFIG["baseline_score"]
-            pg_val_loss = self.calculate_policy_gradient_loss(generated_tokens, logits, rewards)
-
-            # Log metrics
-            self.log('validation_pg_loss', pg_val_loss, on_epoch=True, prog_bar=True, logger=True)
-            self.log('validation_pg_reward_mean', rewards.mean(), on_epoch=True, prog_bar=True, logger=True)
-
-            # Save validation details for the epoch
-            for i in range(len(generated_texts)):
-                self.epoch_validation_details.append({
-                    #'batch_idx': batch_idx,
-                    'Epoch': self.current_epoch,
-                    'Premise': batch['premise'][i],
-                    'Initial': batch['initial'][i],
-                    'Counterfactual': batch['counterfactual'][i],
-                    'Original Ending': batch['original_ending'][i],
-                    'Edited Ending': edited_endings[i],
-                    'Generated Text': generated_texts[i]
-                    #'Reward': rewards[i].item(),
-                    #'pg_val_loss': pg_val_loss.item(),
-                    #'Mode': "Policy Gradient"
-
-                })
-            return pg_val_loss
-
+            return self._validation_step_pg(batch, input_ids, attention_mask)
         else:
-            # MLE validation mode
-            outputs = self.forward(input_ids=input_ids, attention_mask=attention_mask, labels=labels)
-            mle_val_loss = outputs.loss
+            return self._validation_step_mle(batch, input_ids, attention_mask, labels)
 
-            # Decode generated texts
-            generated_texts = self.tokenizer.batch_decode(
-                self.model.generate(input_ids=input_ids, attention_mask=attention_mask, max_length=CONFIG['max_gen_length']),
-                skip_special_tokens=True
-            )
-            edited_endings = [str(ee) for ee in batch['edited_ending']]
+    def _validation_step_pg(self, batch, input_ids, attention_mask):
+        """
+        Validation-specific logic for Policy Gradient (PG) mode.
+        """
+        generated_tokens, logits = self.forward(input_ids=input_ids, attention_mask=attention_mask)
+        generated_texts = self.tokenizer.batch_decode(generated_tokens, skip_special_tokens=True)
+        edited_endings = [str(ee) for ee in batch['edited_ending']]
 
-            # Filter empty/generated texts
-            non_empty_indices = [i for i, text in enumerate(generated_texts) if text.strip()]
-            if not non_empty_indices:
-                logger.warning("All generated texts are empty in this batch; skipping ROUGE calculation.")
-                return mle_val_loss
+        # Calculate sentence-level scores
+        scores = self.metrics_evaluator.calculate_score(generated_texts, edited_endings).detach()
+        self.epoch_scores.extend(scores.tolist())  # Save validation scores for the dataset
 
-            # Apply filtering
-            generated_texts = [generated_texts[i] for i in non_empty_indices]
-            edited_endings = [edited_endings[i] for i in non_empty_indices]
+        # Calculate rewards and PG loss
+        rewards = scores - CONFIG["baseline_score"]
+        pg_val_loss = self.calculate_policy_gradient_loss(generated_tokens, logits, rewards)
 
-            # Calculate sentence-level scores
-            scores = self.metrics_evaluator.calculate_score(generated_texts, edited_endings).detach()
-            self.epoch_scores.extend(scores.tolist())  # Save sentence-level scores for the entire dataset
+        # Log metrics
+        self.log('validation_pg_loss', pg_val_loss, on_epoch=True, prog_bar=True, logger=True)
+        self.log('validation_pg_reward_mean', rewards.mean(), on_epoch=True, prog_bar=True, logger=True)
 
-            # Log MLE loss
-            self.log('validation_mle_loss', mle_val_loss, on_epoch=True, prog_bar=True, logger=True)
+        # Save validation details
+        for i in range(len(generated_texts)):
+            self.epoch_validation_details.append({
+                'Epoch': self.current_epoch,
+                'Premise': batch['premise'][i],
+                'Initial': batch['initial'][i],
+                'Counterfactual': batch['counterfactual'][i],
+                'Original Ending': batch['original_ending'][i],
+                'Edited Ending': edited_endings[i],
+                'Generated Text': generated_texts[i]
+            })
+        return pg_val_loss
 
-            # Save validation details for the epoch
-            for i in range(len(generated_texts)):
-                self.epoch_validation_details.append({
-                    #"batch_idx": batch_idx,
-                    "Epoch": self.current_epoch,
-                    "Premise": batch['premise'][i],
-                    "Initial": batch['initial'][i],
-                    "Counterfactual": batch['counterfactual'][i],
-                    "Original Ending": batch['original_ending'][i],
-                    "Edited Ending": edited_endings[i],
-                    "Generated Text": generated_texts[i]
-                    #"Score": scores[i].item(),
-                    #"mle_val_loss": mle_val_loss.item(),
-                    #"Mode": "MLE"
-                })
+    def _validation_step_mle(self, batch, input_ids, attention_mask, labels):
+        """
+        Validation-specific logic for Maximum Likelihood Estimation (MLE) mode.
+        """
+        outputs = self.forward(input_ids=input_ids, attention_mask=attention_mask, labels=labels)
+        mle_val_loss = outputs.loss
+
+        # Decode generated texts
+        generated_texts = self.tokenizer.batch_decode(
+            self.model.generate(input_ids=input_ids, attention_mask=attention_mask, max_length=CONFIG['max_gen_length']),
+            skip_special_tokens=True
+        )
+        edited_endings = [str(ee) for ee in batch['edited_ending']]
+
+        # Filter empty/generated texts
+        non_empty_indices = [i for i, text in enumerate(generated_texts) if text.strip()]
+        if not non_empty_indices:
+            logger.warning("All generated texts are empty in this batch; skipping ROUGE calculation.")
             return mle_val_loss
 
-    def on_validation_epoch_end(self, test_flag=False):
+        # Apply filtering
+        generated_texts = [generated_texts[i] for i in non_empty_indices]
+        edited_endings = [edited_endings[i] for i in non_empty_indices]
+
+        # Calculate sentence-level scores
+        scores = self.metrics_evaluator.calculate_score(generated_texts, edited_endings).detach()
+        self.epoch_scores.extend(scores.tolist())  # Save validation scores for the dataset
+
+        # Log MLE loss
+        self.log('validation_mle_loss', mle_val_loss, on_epoch=True, prog_bar=True, logger=True)
+
+        # Save validation details
+        for i in range(len(generated_texts)):
+            self.epoch_validation_details.append({
+                'Epoch': self.current_epoch,
+                'Premise': batch['premise'][i],
+                'Initial': batch['initial'][i],
+                'Counterfactual': batch['counterfactual'][i],
+                'Original Ending': batch['original_ending'][i],
+                'Edited Ending': edited_endings[i],
+                'Generated Text': generated_texts[i]
+            })
+        return mle_val_loss
+
+    def on_validation_epoch_end(self):
         """
-        Handles operations at the end of the validation epoch, saving to CSV
-        and calculating overall score for the entire validation/test set.
+        Finalize and save validation results at the end of the validation epoch.
         """
-        # Determine CSV file path based on test_flag
-        csv_file_path = self.test_csv_file_path if test_flag else self.val_csv_file_path
-
-        # Calculate overall score for the entire dataset
-        if self.epoch_scores:
-            overall_score = torch.tensor(self.epoch_scores).mean().item()  # Aggregate all scores across the dataset
-            print(f"Overall score for the epoch: {overall_score}")
-            self.log("validation_overall_score", overall_score, prog_bar=True, logger=True)
-
-        # Log validation MLE loss for this epoch explicitly
-        val_loss = self.trainer.callback_metrics.get("validation_mle_loss", None)
-        if val_loss is not None:
-            logger.info(f"Epoch {self.current_epoch}: Validation MLE Loss = {val_loss:.4f}")
-            print(f"Epoch {self.current_epoch}: Validation MLE Loss = {val_loss:.4f}")
-
-        # Log or save the overall score to the CSV (optional)
+        print("Validation Epoch End")
         if self.epoch_validation_details:
-            self.log_to_csv(csv_file_path, self.epoch_validation_details, epoch=self.current_epoch)
+            print(f"Saving {len(self.epoch_validation_details)} validation details to {self.val_csv_file_path}.")
+            self.log_to_csv(self.val_csv_file_path, self.epoch_validation_details, epoch=self.current_epoch)
 
-        # Clear epoch scores for the next epoch
+        if self.epoch_scores:
+            overall_val_score = torch.tensor(self.epoch_scores).mean().item()
+            print(f"Overall validation score: {overall_val_score}")
+            self.log("validation_overall_score", overall_val_score, prog_bar=True, logger=True)
+
+        # Clear buffers for next validation run
+        self.epoch_validation_details.clear()
         self.epoch_scores.clear()
-        self.cleanup_epoch_data()
+
+    def test_step(self, batch, batch_idx):
+        """
+        Processes a batch during the testing phase. Routes to PG or MLE logic based on mode.
+        """
+        input_ids, attention_mask, labels = batch['input_ids'], batch['attention_mask'], batch['labels']
+
+        if self.use_policy_gradient:
+            return self._test_step_pg(batch, input_ids, attention_mask)
+        else:
+            return self._test_step_mle(batch, input_ids, attention_mask, labels)
+
+    def _test_step_pg(self, batch, input_ids, attention_mask):
+        """
+        Test-specific logic for Policy Gradient (PG) mode.
+        """
+        generated_tokens, logits = self.forward(input_ids=input_ids, attention_mask=attention_mask)
+        generated_texts = self.tokenizer.batch_decode(generated_tokens, skip_special_tokens=True)
+        edited_endings = [str(ee) for ee in batch['edited_ending']]
+
+        scores = self.metrics_evaluator.calculate_score(generated_texts, edited_endings).detach()
+        self.epoch_test_scores.extend(scores.tolist())
+
+        rewards = scores - CONFIG["baseline_score"]
+        pg_test_loss = self.calculate_policy_gradient_loss(generated_tokens, logits, rewards)
+
+        for i in range(len(generated_texts)):
+            self.epoch_test_details.append({
+                'Epoch': self.current_epoch,
+                'Premise': batch['premise'][i],
+                'Initial': batch['initial'][i],
+                'Counterfactual': batch['counterfactual'][i],
+                'Original Ending': batch['original_ending'][i],
+                'Edited Ending': edited_endings[i],
+                'Generated Text': generated_texts[i]
+            })
+
+        return pg_test_loss
+
+    def _test_step_mle(self, batch, input_ids, attention_mask, labels):
+        """
+        Test-specific logic for Maximum Likelihood Estimation (MLE) mode.
+        """
+        outputs = self.forward(input_ids=input_ids, attention_mask=attention_mask, labels=labels)
+        mle_test_loss = outputs.loss
+
+        generated_texts = self.tokenizer.batch_decode(
+            self.model.generate(input_ids=input_ids, attention_mask=attention_mask, max_length=CONFIG['max_gen_length']),
+            skip_special_tokens=True
+        )
+        edited_endings = [str(ee) for ee in batch['edited_ending']]
+
+        for i in range(len(generated_texts)):
+            self.epoch_test_details.append({
+                'Epoch': self.current_epoch,
+                'Premise': batch['premise'][i],
+                'Initial': batch['initial'][i],
+                'Counterfactual': batch['counterfactual'][i],
+                'Original Ending': batch['original_ending'][i],
+                'Edited Ending': edited_endings[i],
+                'Generated Text': generated_texts[i]
+            })
+
+        return mle_test_loss
+
+    def on_test_epoch_end(self):
+        """
+        Finalize and save test results at the end of the test epoch.
+        """
+        print("Test Epoch End")
+        if self.epoch_test_details:
+            print(f"Saving {len(self.epoch_test_details)} test details to {self.test_csv_file_path}.")
+            self.log_to_csv(self.test_csv_file_path, self.epoch_test_details, epoch=self.current_epoch)
+
+        if self.epoch_test_scores:
+            overall_test_score = torch.tensor(self.epoch_test_scores).mean().item()
+            print(f"Overall test score: {overall_test_score}")
+            self.log("test_overall_score", overall_test_score, prog_bar=True, logger=True)
+
+        # Clear buffers for next test run
+        self.epoch_test_details.clear()
+        self.epoch_test_scores.clear()
 
     def log_to_csv(self, csv_file_path, details, epoch=None):
         """
-        Logs the validation or test results into a CSV file.
-        Adds the current epoch to the saved details for filtering later.
+        Writes the details to the specified CSV file.
         """
+        print(f"Writing {len(details)} entries to {csv_file_path}.")
         file_exists = os.path.isfile(csv_file_path)
-        for detail in details:
-            detail['Epoch'] = epoch  # Add epoch information explicitly
 
         with open(csv_file_path, 'a', newline='', encoding='utf-8') as csvfile:
             writer = csv.DictWriter(csvfile, fieldnames=details[0].keys())
             if not file_exists:
                 writer.writeheader()
+            for detail in details:
+                detail['Epoch'] = epoch
             writer.writerows(details)
-
-    def determine_csv_path(self, test_flag):
-        return self.test_csv_file_path if test_flag else self.val_csv_file_path
-
-    def test_step(self, batch, batch_idx):
-        """
-        Called during the testing loop to perform a forward pass with a batch from the test set,
-        calculate the loss, and optionally generate text.
-        """
-        return self.validation_step(batch, batch_idx)
-    
-    def on_test_epoch_end(self):
-        return self.on_validation_epoch_end(test_flag=True)
-
-    def cleanup_epoch_data(self):
-        """
-        Cleans up data collected during the epoch to prepare for the next epoch.
-        """
-        self.epoch_validation_details.clear()
 
     def configure_optimizers(self):
         """

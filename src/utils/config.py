@@ -52,24 +52,24 @@ CONFIG = {
 
     # MLE Phase configurations
     "mle_enabled": True,  # Enable MLE training
-    "mle_from_checkpoint": False,  # Start training from scratch (no checkpoint)
+    "mle_from_checkpoint": True,  # Start training from scratch (no checkpoint)
     "mle_checkpoint_path": None,  # No checkpoint path since we start from scratch
-    "mle_epochs": 1,  # Number of epochs to train with MLE
+    "mle_epochs": 3,  # Number of epochs to train with MLE
 
     # PG Phase configurations (disabled in this experiment)
     "pg_enabled": False,  # Disable policy gradient training (PG phase)
-    "pg_from_checkpoint": '/data/agirard/Projects/TimeTravel-PolicyGradientRL/models/mle_2024-11-27-09/mle_checkpoint_epoch=epoch=0-val_loss=validation_mle_loss=13.38.ckpt',  # Start PG training from the best MLE checkpoint, not a separate checkpoint
-    "pg_checkpoint_path": None,   # Leave as None to use the best MLE checkpoint
-    "pg_epochs": 1,  # Number of epochs to fine-tune with PG
+    "pg_from_checkpoint": True,  # Start PG training from the best MLE checkpoint, not a separate checkpoint
+    "pg_checkpoint_path": '/data/agirard/Projects/TimeTravel-PolicyGradientRL/models/mle_2024-11-28-11/mle_checkpoint_epoch=epoch=2-val_loss=validation_mle_loss=0.87.ckpt',   # Leave as None to use the best MLE checkpoint
+    "pg_epochs": 3,  # Number of epochs to fine-tune with PG
 
     # PG Phase Reward-based training configurations
-    "reward_metric": "bart",   ## Primary reward metric for PG (e.g., "rouge", "bert", "bart") (default to "rouge")
+    "reward_metric": "rouge",   ## Primary reward metric for PG (e.g., "rouge", "bert", "bart","bleu") (default to "rouge")
     "baseline_score": 0.5,  # Baseline score for PG (used to calculate rewards)
   
     # Additional configuration for scoring metrics 
     "use_bert": True,  # Disable BERT scorer
     "bert_scorer_model_type": "microsoft/deberta-xlarge-mnli",  # Default BERT model for scorer 
-    "scorer_device": "cuda:1",  # Device for the scorer
+    "scorer_device": "cuda:0",  # Device for the scorer
     "bert_scorer_batch_size": 4,  # Batch size for BERT scorer 
 
     "use_bleu": True,  # Disable BLEU scorer,
