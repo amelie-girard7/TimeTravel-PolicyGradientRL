@@ -16,14 +16,14 @@ CONFIG = {
     "dataset_type": "TimeTravel",  # Options: "ART", "TimeTravel", "AblatedTimeTravel"
 
     # Sample Timetravel sample datasets
-    "train_file": "train_supervised_small_sample.json",
-    "dev_file": "dev_data_sample.json",
-    "test_file": "test_data_sample.json",
+    #"train_file": "train_supervised_small_sample.json",
+    #"dev_file": "dev_data_sample.json",
+    #"test_file": "test_data_sample.json",
 
     # Timetravel  datasets
-    #"train_file": "train_supervised_small.json",
-    #"dev_file": "dev_data.json",
-    #"test_file": "test_data.json", 
+    "train_file": "train_supervised_small.json",
+    "dev_file": "dev_data.json",
+    "test_file": "test_data.json", 
 
     # Sample Art dataset
     #"train_file": "art_train_data_sample.json",
@@ -52,14 +52,14 @@ CONFIG = {
 
     # MLE Phase configurations
     "mle_enabled": True,  # Enable MLE training
-    "mle_from_checkpoint": True,  # Start training from scratch (no checkpoint)
+    "mle_from_checkpoint": False,  # Start training from scratch (no checkpoint)
     "mle_checkpoint_path": None,  # No checkpoint path since we start from scratch
     "mle_epochs": 3,  # Number of epochs to train with MLE
 
     # PG Phase configurations (disabled in this experiment)
     "pg_enabled": False,  # Disable policy gradient training (PG phase)
-    "pg_from_checkpoint": True,  # Start PG training from the best MLE checkpoint, not a separate checkpoint
-    "pg_checkpoint_path": '/data/agirard/Projects/TimeTravel-PolicyGradientRL/models/mle_2024-11-28-11/mle_checkpoint_epoch=epoch=2-val_loss=validation_mle_loss=0.87.ckpt',   # Leave as None to use the best MLE checkpoint
+    "pg_from_checkpoint": False,  # Start PG training from the best MLE checkpoint, not a separate checkpoint
+    "pg_checkpoint_path": None,   # Leave as None to use the best MLE checkpoint
     "pg_epochs": 3,  # Number of epochs to fine-tune with PG
 
     # PG Phase Reward-based training configurations

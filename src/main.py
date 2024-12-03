@@ -19,9 +19,6 @@ logger = logging.getLogger(__name__)
 
 
 def setup_model(model_dir, file_label="", checkpoint_path=None, use_policy_gradient=False):
-    """
-    Initializes the model, optionally loading from a checkpoint.
-    """
     if checkpoint_path:
         logger.info(f"Loading model from checkpoint: {checkpoint_path}")
         model = FlanT5FineTuner.load_from_checkpoint(
@@ -65,10 +62,15 @@ def evaluate_and_save(model_dir, loader, best_checkpoint, file_label, best_epoch
     # Load model from checkpoint
     model = setup_model(model_dir, file_label=file_label, checkpoint_path=best_checkpoint)
 
-    # Generate predictions
+    # Generate predictions using the appropriate evaluation method
     trainer = Trainer(accelerator='gpu', devices=1)
-    trainer.test(model, loader, verbose=False)
-
+    if phase == "test":
+        trainer.test(model, loader, verbose=False)
+    elif phase == "validation":
+        trainer.validate(model, loader, verbose=False)
+    else:
+        raise ValueError(f"Unknown phase: {phase}")
+    
     # Load the details file for the specified phase
     details_file = os.path.join(model_dir, f"{phase}_details{file_label}.csv")
     if not os.path.exists(details_file):
