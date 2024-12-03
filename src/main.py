@@ -55,68 +55,52 @@ def setup_trainer(max_epochs, checkpoint_callback, wandb_logger):
     logger.info(f"Trainer setup complete for {max_epochs} epochs.")
     return trainer
 
-def evaluate_and_save(model_dir, test_loader, best_checkpoint, file_label, best_epoch):
-    logger.info(f"Evaluating data for best epoch {best_epoch} using checkpoint: {best_checkpoint}")
-    print(f"Evaluating data for best epoch {best_epoch} using checkpoint: {best_checkpoint}")
+def evaluate_and_save(model_dir, loader, best_checkpoint, file_label, best_epoch, phase):
+    """
+    Evaluates data for the specified phase ('test' or 'validation') using the given model checkpoint.
+    """
+    logger.info(f"Evaluating {phase} data for best epoch {best_epoch} using checkpoint: {best_checkpoint}")
+    print(f"Evaluating {phase} data for best epoch {best_epoch} using checkpoint: {best_checkpoint}")
+
+    # Load model from checkpoint
     model = setup_model(model_dir, file_label=file_label, checkpoint_path=best_checkpoint)
 
     # Generate predictions
     trainer = Trainer(accelerator='gpu', devices=1)
-    trainer.test(model, test_loader, verbose=False)
+    trainer.test(model, loader, verbose=False)
 
-    # Load per-epoch test details
-    test_details_file = os.path.join(model_dir, f"test_details{file_label}.csv")
-    if not os.path.exists(test_details_file):
-        logger.error(f"Test details file not found at {test_details_file}")
-        print(f"Test details file not found at {test_details_file}")
-        raise FileNotFoundError(f"Test details file not found at {test_details_file}")
-    test_details_df = pd.read_csv(test_details_file)
+    # Load the details file for the specified phase
+    details_file = os.path.join(model_dir, f"{phase}_details{file_label}.csv")
+    if not os.path.exists(details_file):
+        logger.error(f"{phase.capitalize()} details file not found at {details_file}")
+        raise FileNotFoundError(f"{phase.capitalize()} details file not found at {details_file}")
+    details_df = pd.read_csv(details_file)
 
-    # Log all columns and a preview of the dataframe
-    logger.info(f"Columns in test_details_df: {test_details_df.columns.tolist()}")
-    print(f"Columns in test_details_df: {test_details_df.columns.tolist()}")
-    logger.info(f"Preview of test_details_df:\n{test_details_df.head()}")
-    print(f"Preview of test_details_df:\n{test_details_df.head()}")
-
-    # Filter for the specified epoch
-    filtered_test_details = test_details_df[test_details_df['Epoch'] == best_epoch]
-    if filtered_test_details.empty:
-        logger.warning(
-            f"No rows found for epoch {best_epoch} in test_details_df. "
-            "Falling back to evaluate all rows in the dataset."
-        )
-        print(f"No rows found for epoch {best_epoch} in test_details_df. Falling back to evaluate all rows.")
-        filtered_test_details = test_details_df
-
-    logger.info(f"Evaluating {len(filtered_test_details)} rows for epoch {best_epoch}.")
-    print(f"Evaluating {len(filtered_test_details)} rows for epoch {best_epoch}.")
-    logger.info(f"Columns in filtered_test_details: {filtered_test_details.columns.tolist()}")
-    print(f"Columns in filtered_test_details: {filtered_test_details.columns.tolist()}")
-    logger.info(f"Preview of filtered_test_details:\n{filtered_test_details.head()}")
-    print(f"Preview of filtered_test_details:\n{filtered_test_details.head()}")
+    # Filter rows for the best epoch
+    filtered_details = details_df[details_df['Epoch'] == best_epoch]
+    if filtered_details.empty:
+        logger.warning(f"No rows found for epoch {best_epoch} in {phase}_details_df. Evaluating all rows instead.")
+        filtered_details = details_df
 
     # Extract relevant columns
     try:
-        generated_texts = filtered_test_details['Generated Text'].tolist()
-        edited_endings = filtered_test_details['Edited Ending'].tolist()
-        counterfactuals = filtered_test_details['Counterfactual'].tolist()
-        initials = filtered_test_details['Initial'].tolist()
-        premises = filtered_test_details['Premise'].tolist()
-        original_endings = filtered_test_details['Original Ending'].tolist()
+        generated_texts = filtered_details['Generated Text'].tolist()
+        edited_endings = filtered_details['Edited Ending'].tolist()
+        counterfactuals = filtered_details['Counterfactual'].tolist()
+        initials = filtered_details['Initial'].tolist()
+        premises = filtered_details['Premise'].tolist()
+        original_endings = filtered_details['Original Ending'].tolist()
     except KeyError as e:
-        logger.error(f"Missing column in filtered_test_details: {e}")
-        print(f"Missing column in filtered_test_details: {e}")
+        logger.error(f"Missing column in filtered_{phase}_details: {e}")
         raise
 
-    # Validate non-empty and matching lengths for BLEU score calculation
+    # Validate non-empty and matching lengths for metric calculations
     if not (generated_texts and edited_endings):
-        logger.error("Generated texts or edited endings are empty. Skipping BLEU score calculations.")
-        print("Generated texts or edited endings are empty. Skipping BLEU score calculations.")
+        logger.error(f"Generated texts or edited endings are empty. Skipping metric calculations for {phase}.")
         return
 
     if len(generated_texts) != len(edited_endings):
-        logger.error("Mismatch in lengths of generated texts and edited endings. Skipping BLEU score calculations.")
-        print("Mismatch in lengths of generated texts and edited endings. Skipping BLEU score calculations.")
+        logger.error(f"Mismatch in lengths of generated texts and edited endings. Skipping metric calculations for {phase}.")
         return
 
     # Calculate metrics
@@ -128,42 +112,38 @@ def evaluate_and_save(model_dir, test_loader, best_checkpoint, file_label, best_
             generated_texts, edited_endings, counterfactuals, initials, premises, original_endings, logger
         ))
     except Exception as e:
-        logger.error(f"Error calculating BART similarity scores: {e}")
-        print(f"Error calculating BART similarity scores: {e}")
+        logger.error(f"Error calculating BART similarity scores for {phase}: {e}")
 
     try:
         metrics.update(evaluator.calculate_and_log_bert_similarity(
             generated_texts, edited_endings, counterfactuals, initials, premises, original_endings, logger
         ))
     except Exception as e:
-        logger.error(f"Error calculating BERT similarity scores: {e}")
-        print(f"Error calculating BERT similarity scores: {e}")
+        logger.error(f"Error calculating BERT similarity scores for {phase}: {e}")
 
     try:
         metrics.update(evaluator.calculate_and_log_bleu_scores(
             generated_texts, edited_endings, counterfactuals, initials, premises, original_endings, logger
         ))
     except Exception as e:
-        logger.error(f"Error calculating BLEU scores: {e}")
-        print(f"Error calculating BLEU scores: {e}")
+        logger.error(f"Error calculating BLEU scores for {phase}: {e}")
 
     try:
         metrics.update(evaluator.calculate_and_log_rouge_scores(
             generated_texts, edited_endings, counterfactuals, initials, premises, original_endings, logger
         ))
     except Exception as e:
-        logger.error(f"Error calculating ROUGE scores: {e}")
-        print(f"Error calculating ROUGE scores: {e}")
+        logger.error(f"Error calculating ROUGE scores for {phase}: {e}")
 
     # Save metrics
-    metrics_file = os.path.join(model_dir, f"test_metrics_epoch_{best_epoch}{file_label}.csv")
+    metrics_file = os.path.join(model_dir, f"{phase}_metrics_epoch_{best_epoch}{file_label}.csv")
     metrics_df = pd.DataFrame.from_dict(metrics, orient='index', columns=['Score'])
     metrics_df.reset_index(inplace=True)
     metrics_df.columns = ['Metric', 'Score']
     metrics_df.to_csv(metrics_file, index=False)
 
-    logger.info(f"Evaluation metrics for epoch {best_epoch} saved to {metrics_file}")
-    print(f"Evaluation metrics for epoch {best_epoch} saved to {metrics_file}")
+    logger.info(f"{phase.capitalize()} evaluation metrics saved to {metrics_file}")
+    print(f"{phase.capitalize()} evaluation metrics saved to {metrics_file}")
 
 def extract_epoch_from_checkpoint(checkpoint_path):
     """
@@ -178,7 +158,7 @@ def extract_epoch_from_checkpoint(checkpoint_path):
     return "Unknown"
 
 def main():
-    os.environ['CUDA_VISIBLE_DEVICES'] = '1'
+    os.environ['CUDA_VISIBLE_DEVICES'] = '0'
 
     # Define unique directory based on timestamp and phase
     phase = "mle" if CONFIG["mle_enabled"] else "pg"
@@ -191,11 +171,16 @@ def main():
 
     # Setup WandB logger
     wandb_logger = WandbLogger(
-        project="counterfactualStory",
-        entity="counterfactualStory",
-        log_model="all"
+    project="counterfactualStory",
+    entity="counterfactualStory",
+    log_model=False  # Avoid logging model checkpoints
     )
     wandb_logger.experiment.config.update(CONFIG)
+    wandb_logger.experiment.config.update({
+        "log_system_stats": False,  # Turn off system stats
+        "log_code": False           # Avoid logging source code
+    })
+
 
     # Setup tokenizer and dataloaders
     tokenizer = T5Tokenizer.from_pretrained(CONFIG["model_name"], legacy=False)
@@ -224,10 +209,10 @@ def main():
 
         mle_checkpoint_callback = ModelCheckpoint(
             dirpath=model_dir,
-            monitor='validation_mle_loss',
-            mode='min',
-            save_top_k=1,
-            filename="mle_checkpoint_epoch={epoch}-val_loss={validation_mle_loss:.2f}"
+            monitor='validation_mle_loss', # Metric to monitor during training
+            mode='min', # Save the checkpoint when the validation loss decreases (minimum is better)
+            save_top_k=1, # Keeping only the top 1 checkpoint, the one with the minimum loss
+            filename="mle_checkpoint_epoch={epoch}-val_loss={validation_mle_loss:.2f}" # File name format including epoch and loss
         )
 
         trainer = setup_trainer(CONFIG["mle_epochs"], mle_checkpoint_callback, wandb_logger)
@@ -248,10 +233,19 @@ def main():
 
             evaluate_and_save(
                 model_dir=model_dir,
-                test_loader=dataloaders[test_key],
+                loader=dataloaders[test_key],
                 best_checkpoint=best_checkpoint,
                 file_label="_mle",
-                best_epoch=best_epoch
+                best_epoch=best_epoch,
+                phase="test"
+            )
+            evaluate_and_save(
+                model_dir=model_dir,
+                loader=dataloaders[dev_key],
+                best_checkpoint=best_checkpoint,
+                file_label="_mle",
+                best_epoch=best_epoch,
+                phase="validation"
             )
 
     # --- PG Phase ---

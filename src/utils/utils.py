@@ -102,17 +102,20 @@ def preprocess_data(row, tokenizer, dataset_type="TimeTravel"):
         tokenized_inputs = tokenizer.encode_plus(
             input_sequence, truncation=True, return_tensors="pt", max_length=CONFIG["max_length"]
         )
+        #print(f"Tokenized Inputs: {tokenized_inputs}")  # Debug print for tokenized inputs
               
         # Tokenize the edited ending, which serves as the target sequence for the model to generate.
         tokenized_ending = tokenizer.encode_plus(
             row['edited_ending'], truncation=True, return_tensors="pt", max_length=CONFIG["max_length"]
         )
+        #print(f"Tokenized Ending: {tokenized_ending}") 
                 
         # Calculate differential weights based on the list of differences provided for each token. This highlights tokens
         # that are directly associated with the differences, aiming to adjust the model's focus and learning priority.
         differential_weights = calculate_differential_weights(
             tokenized_ending['input_ids'].squeeze(), tokenizer, row['differences']
         )
+        #print(f"Differential Weights: {differential_weights}")
         
         # Ensure that 'differential_weights' matches the length of 'labels'
         assert tokenized_ending['input_ids'].squeeze(0).size() == differential_weights.size(), "Mismatch between labels and differential weights length."
@@ -122,7 +125,7 @@ def preprocess_data(row, tokenizer, dataset_type="TimeTravel"):
         #print(f"Labels: {tokenized_ending['input_ids']}")
         #print(f"Differential Weights: {differential_weights}")
 
-        # Return the tokenized inputs, labels, and original data fields for evaluation.
+        # Prepare the final output dictionary
         return {
             'input_ids': tokenized_inputs['input_ids'].squeeze(0),
             'attention_mask': tokenized_inputs['attention_mask'].squeeze(0),
@@ -136,21 +139,33 @@ def preprocess_data(row, tokenizer, dataset_type="TimeTravel"):
             # Include original_ending only if available
             **({'original_ending': row['original_ending']} if 'original_ending' in row else {})
         }
+    
     except Exception as e:
         logger.error(f"Error in preprocess_data: {e}")
         return None
     
-
-
 def collate_fn(batch, pad_token_id=0,attention_pad_value=0):
     """
     Collates a batch of preprocessed data into a format suitable for model input,
     including padding to equalize the lengths of sequences within the batch.
     """
-    
+    print(f"Batch before collation: {batch}")  # Debug print to show the raw batch data
     # Unpack the batch into separate lists for each field.
-    input_ids, attention_mask, labels, differential_weights, premise, initial, original_ending, counterfactual, edited_ending = list(zip(*batch))
-    
+    # Extract fields explicitly to prevent ordering issues
+    input_ids = [item['input_ids'] for item in batch]
+    attention_mask = [item['attention_mask'] for item in batch]
+    labels = [item['labels'] for item in batch]
+    differential_weights = [item['differential_weights'] for item in batch]
+    premise = [item['premise'] for item in batch]
+    initial = [item['initial'] for item in batch]
+    original_ending = [item['original_ending'] for item in batch]
+    counterfactual = [item['counterfactual'] for item in batch]
+    edited_ending = [item['edited_ending'] for item in batch]
+
+    print(f"Extracted Fields:\nPremises: {premise}\nInitials: {initial}\nOriginal Endings: {original_ending}\n"
+          f"Counterfactuals: {counterfactual}\nEdited Endings: {edited_ending}")  # Debug print for field values
+
+
     # Padding sequences for 'input_ids', 'attention_masks', and 'labels'
     input_ids_padded = torch.nn.utils.rnn.pad_sequence(input_ids, batch_first=True, padding_value=pad_token_id)
     attention_masks_padded = torch.nn.utils.rnn.pad_sequence(attention_mask, batch_first=True, padding_value=attention_pad_value)
@@ -158,7 +173,6 @@ def collate_fn(batch, pad_token_id=0,attention_pad_value=0):
    
     # Convert differential_weights to tensors and pad
     differential_weights_tensors = [dw.clone().detach().to(input_ids_padded.device) for dw in differential_weights]
-    # differential_weights_tensors = [torch.tensor(dw, dtype=torch.float) for dw in differential_weights]
     differential_weights_padded = torch.nn.utils.rnn.pad_sequence(differential_weights_tensors, batch_first=True, padding_value=1)
 
     # Debug prints
