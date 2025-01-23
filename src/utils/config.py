@@ -47,23 +47,25 @@ CONFIG = {
     "max_gen_length": 250,  # Maximum length for generated text
 
     # Additional training options
-    "use_custom_loss": False,  # Whether to use a custom loss function (set to False for MLE)
+    "use_custom_loss": True,  # Whether to use a custom loss function (set to False for MLE)
     "output_attentions": False,  # Set to True to output attentions from the model (optional)
 
     # MLE Phase configurations
-    "mle_enabled": True,  # Enable MLE training
+    "mle_enabled": False,  # Enable MLE training
     "mle_from_checkpoint": False,  # Start training from scratch (no checkpoint)
     "mle_checkpoint_path": None,  # No checkpoint path since we start from scratch
     "mle_epochs": 3,  # Number of epochs to train with MLE
 
     # PG Phase configurations (disabled in this experiment)
-    "pg_enabled": False,  # Disable policy gradient training (PG phase)
-    "pg_from_checkpoint": False,  # Start PG training from the best MLE checkpoint, not a separate checkpoint
-    "pg_checkpoint_path": None,   # Leave as None to use the best MLE checkpoint
+    "pg_enabled": True,  # Disable policy gradient training (PG phase)
+    "pg_from_checkpoint": True,  # Start PG training from the best MLE checkpoint, not a separate checkpoint
+    "pg_checkpoint_path": '/home/agirard/Data/Projects/TimeTravel-PolicyGradientRL/models/mle_2025-01-22-14/mle_checkpoint_epoch=epoch=2-val_loss=validation_mle_loss=0.95.ckpt',# MLE3_10-1
+    #"pg_checkpoint_path": '/data/agirard/Projects/TimeTravel-PolicyGradientRL/models/mle_2025-01-15-12/mle_checkpoint_epoch=epoch=2-val_loss=validation_mle_loss=0.90.ckpt',   # MLE3_5-1
+    #"pg_checkpoint_path": '/data/agirard/Projects/TimeTravel-PolicyGradientRL/models/mle_2024-12-03-15/mle_checkpoint_epoch=epoch=2-val_loss=validation_mle_loss=0.88.ckpt',   # MLE3_1-1
     "pg_epochs": 3,  # Number of epochs to fine-tune with PG
 
     # PG Phase Reward-based training configurations
-    "reward_metric": "rouge",   ## Primary reward metric for PG (e.g., "rouge", "bert", "bart","bleu") (default to "rouge")
+    "reward_metric": "bart",   ## Primary reward metric for PG (e.g., "rouge", "bert", "bart","bleu") (default to "rouge")
     "baseline_score": 0.5,  # Baseline score for PG (used to calculate rewards)
   
     # Additional configuration for scoring metrics 
