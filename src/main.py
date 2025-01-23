@@ -283,11 +283,21 @@ def main():
 
             evaluate_and_save(
                 model_dir=model_dir,
-                test_loader=dataloaders[test_key],
+                loader=dataloaders[test_key],
                 best_checkpoint=best_checkpoint,
                 file_label="_pg",
-                best_epoch=best_epoch
+                best_epoch=best_epoch,
+                phase="test"
             )
+            evaluate_and_save(
+                model_dir=model_dir,
+                loader=dataloaders[dev_key],
+                best_checkpoint=best_checkpoint,
+                file_label="_pg",
+                best_epoch=best_epoch,
+                phase="validation"
+            )
+            
 
 
 if __name__ == '__main__':

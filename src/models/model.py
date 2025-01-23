@@ -152,7 +152,7 @@ class FlanT5FineTuner(pl.LightningModule):
         # Handle special case for BART (negative rewards)
         if CONFIG.get("reward_metric") == "bart":
             rewards = rewards + 4  # add a Baseline to move to the positif size but you keep the magnitude
-            # Try with 3 and 5
+            # Try with 3,5,4
 
         # Calculate policy gradient loss
         return -(rewards * sequence_log_prob_sum).mean()
@@ -277,14 +277,14 @@ class FlanT5FineTuner(pl.LightningModule):
         edited_endings = [str(ee) for ee in batch['edited_ending']]
 
         # Filter empty/generated texts
-        non_empty_indices = [i for i, text in enumerate(generated_texts) if text.strip()]
-        if not non_empty_indices:
-            logger.warning("All generated texts are empty in this batch; skipping ROUGE calculation.")
-            return mle_val_loss
+        #non_empty_indices = [i for i, text in enumerate(generated_texts) if text.strip()]
+        #if not non_empty_indices:
+        #    logger.warning("All generated texts are empty in this batch; skipping ROUGE calculation.")
+        #    return mle_val_loss
 
         # Apply filtering
-        generated_texts = [generated_texts[i] for i in non_empty_indices]
-        edited_endings = [edited_endings[i] for i in non_empty_indices]
+        #generated_texts = [generated_texts[i] for i in non_empty_indices]
+        #edited_endings = [edited_endings[i] for i in non_empty_indices]
 
         # Calculate sentence-level scores
         scores = self.metrics_evaluator.calculate_score(generated_texts, edited_endings).detach()
@@ -318,7 +318,7 @@ class FlanT5FineTuner(pl.LightningModule):
         if self.epoch_scores:
             overall_val_score = torch.tensor(self.epoch_scores).mean().item()
             print(f"Overall validation score: {overall_val_score}")
-            self.log("validation_overall_score", overall_val_score, prog_bar=True, logger=True)
+            self.log("overall_score", overall_val_score, prog_bar=True, logger=True)
 
         # Clear buffers for next validation run
         self.epoch_validation_details.clear()
