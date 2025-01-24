@@ -21,9 +21,9 @@ CONFIG = {
     #"test_file": "test_data_sample.json",
 
     # Timetravel  datasets
-    "train_file": "train_supervised_small.json",
-    "dev_file": "dev_data.json",
-    "test_file": "test_data.json", 
+    "train_file": "train_supervised_small_sample.json",
+    "dev_file": "dev_data_sample.json",
+    "test_file": "test_data_sample.json",
 
     # Sample Art dataset
     #"train_file": "art_train_data_sample.json",
@@ -47,7 +47,7 @@ CONFIG = {
     "max_gen_length": 250,  # Maximum length for generated text
 
     # Additional training options
-    "use_custom_loss": True,  # Whether to use a custom loss function (set to False for MLE)
+    "use_custom_loss": False,  # Whether to use a custom loss function (set to False for MLE)
     "output_attentions": False,  # Set to True to output attentions from the model (optional)
 
     # MLE Phase configurations
@@ -59,9 +59,9 @@ CONFIG = {
     # PG Phase configurations (disabled in this experiment)
     "pg_enabled": True,  # Disable policy gradient training (PG phase)
     "pg_from_checkpoint": True,  # Start PG training from the best MLE checkpoint, not a separate checkpoint
-    "pg_checkpoint_path": '/home/agirard/Data/Projects/TimeTravel-PolicyGradientRL/models/mle_2025-01-22-14/mle_checkpoint_epoch=epoch=2-val_loss=validation_mle_loss=0.95.ckpt',# MLE3_10-1
+    #"pg_checkpoint_path": '/home/agirard/Data/Projects/TimeTravel-PolicyGradientRL/models/mle_2025-01-22-14/mle_checkpoint_epoch=epoch=2-val_loss=validation_mle_loss=0.95.ckpt',# MLE3_10-1
     #"pg_checkpoint_path": '/data/agirard/Projects/TimeTravel-PolicyGradientRL/models/mle_2025-01-15-12/mle_checkpoint_epoch=epoch=2-val_loss=validation_mle_loss=0.90.ckpt',   # MLE3_5-1
-    #"pg_checkpoint_path": '/data/agirard/Projects/TimeTravel-PolicyGradientRL/models/mle_2024-12-03-15/mle_checkpoint_epoch=epoch=2-val_loss=validation_mle_loss=0.88.ckpt',   # MLE3_1-1
+    "pg_checkpoint_path": '/data/agirard/Projects/TimeTravel-PolicyGradientRL/models/mle_2024-12-03-15/mle_checkpoint_epoch=epoch=2-val_loss=validation_mle_loss=0.88.ckpt',   # MLE3_1-1
     "pg_epochs": 3,  # Number of epochs to fine-tune with PG
 
     # PG Phase Reward-based training configurations
