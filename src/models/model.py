@@ -128,7 +128,7 @@ class FlanT5FineTuner(pl.LightningModule):
         
         return mean_weighted_loss
 
-    def calculate_policy_gradient_loss(self, generated_tokens, logits, rewards):
+    def calculate_policy_gradient_loss(self, generated_tokens, logits, rewards, baseline):
         """
         Calculates policy gradient loss based on generated tokens and rewards.
         Handles the case where BART scores are negative by flipping the sign of rewards.
@@ -150,12 +150,13 @@ class FlanT5FineTuner(pl.LightningModule):
 
 
         # Handle special case for BART (negative rewards)
-        if CONFIG.get("reward_metric") == "bart":
-            rewards = rewards + 4  # add a Baseline to move to the positif size but you keep the magnitude
-            # Try with 3,5,4
+        #if CONFIG.get("reward_metric") == "bart":
+        #    rewards = rewards + 4  # add a Baseline to move to the positif size but you keep the magnitude
+        # Calculate rewards relative to the dynamic baseline
+        adjusted_rewards = rewards - baseline
 
         # Calculate policy gradient loss
-        return -(rewards * sequence_log_prob_sum).mean()
+        return -(adjusted_rewards * sequence_log_prob_sum).mean()
 
     def training_step(self, batch, batch_idx):
         """
@@ -179,15 +180,23 @@ class FlanT5FineTuner(pl.LightningModule):
 
         # Calculate rewards for generated texts
         scores = self.metrics_evaluator.calculate_score(generated_texts, edited_endings).detach()
-        rewards = scores - CONFIG["baseline_score"]
+
+        # Calculate dynamic baseline as the mean of BART scores in the current batch
+        dynamic_baseline = scores.mean().item()
+
+        #rewards = scores - CONFIG["baseline_score"]
+
+        # Adjust rewards using the dynamic baseline
+        rewards = scores - dynamic_baseline
 
         # Calculate PG loss
-        pg_loss = self.calculate_policy_gradient_loss(generated_tokens, logits, rewards)
-        print(f'pg_loss -> {pg_loss}')
+        pg_loss = self.calculate_policy_gradient_loss(generated_tokens, logits, rewards, dynamic_baseline)
+        print(f'pg_loss -> {pg_loss}, dynamic_baseline -> {dynamic_baseline}')
 
         # Log Policy Gradient-specific training metrics
         self.log('training_pg_loss', pg_loss, on_step=True, on_epoch=True, prog_bar=True, logger=True)
         self.log('training_pg_reward_mean', rewards.mean(), on_step=True, on_epoch=True, prog_bar=True, logger=True)
+        self.log('training_pg_baseline', dynamic_baseline, on_step=True, on_epoch=True, prog_bar=True, logger=True)
 
         return pg_loss  # Return PG loss for optimization
 
@@ -241,13 +250,18 @@ class FlanT5FineTuner(pl.LightningModule):
         scores = self.metrics_evaluator.calculate_score(generated_texts, edited_endings).detach()
         self.epoch_scores.extend(scores.tolist())  # Save validation scores for the dataset
 
+        # Calculate dynamic baseline for validation
+        dynamic_baseline = scores.mean().item()
+
         # Calculate rewards and PG loss
-        rewards = scores - CONFIG["baseline_score"]
-        pg_val_loss = self.calculate_policy_gradient_loss(generated_tokens, logits, rewards)
+        # rewards = scores - CONFIG["baseline_score"]
+        rewards = scores - dynamic_baseline
+        pg_val_loss = self.calculate_policy_gradient_loss(generated_tokens, logits, rewards, dynamic_baseline)
 
         # Log metrics
         self.log('validation_pg_loss', pg_val_loss, on_epoch=True, prog_bar=True, logger=True)
         self.log('validation_pg_reward_mean', rewards.mean(), on_epoch=True, prog_bar=True, logger=True)
+        self.log('validation_pg_baseline', dynamic_baseline, on_epoch=True, prog_bar=True, logger=True)
 
         # Save validation details
         for i in range(len(generated_texts)):
@@ -346,8 +360,18 @@ class FlanT5FineTuner(pl.LightningModule):
         scores = self.metrics_evaluator.calculate_score(generated_texts, edited_endings).detach()
         self.epoch_test_scores.extend(scores.tolist())
 
-        rewards = scores - CONFIG["baseline_score"]
-        pg_test_loss = self.calculate_policy_gradient_loss(generated_tokens, logits, rewards)
+        # Calculate dynamic baseline as the mean of BART scores
+        dynamic_baseline = scores.mean().item()
+
+        # rewards = scores - CONFIG["baseline_score"]
+        rewards = scores - dynamic_baseline
+
+        pg_test_loss = self.calculate_policy_gradient_loss(generated_tokens, logits, rewards, dynamic_baseline)
+
+        # Log test metrics
+        self.log('test_pg_loss', pg_test_loss, on_step=False, on_epoch=True, prog_bar=True, logger=True)
+        self.log('test_pg_reward_mean', rewards.mean(), on_step=False, on_epoch=True, prog_bar=True, logger=True)
+        self.log('test_pg_baseline', dynamic_baseline, on_step=False, on_epoch=True, prog_bar=True, logger=True)
 
         for i in range(len(generated_texts)):
             self.epoch_test_details.append({
