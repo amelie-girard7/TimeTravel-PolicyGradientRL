@@ -15,15 +15,16 @@ CONFIG = {
     "results_dir": ROOT_DIR / "results",  # Directory for results (e.g., validation details)
     "dataset_type": "TimeTravel",  # Options: "ART", "TimeTravel", "AblatedTimeTravel"
 
+    # ******** Data files***********
     # Sample Timetravel sample datasets
     #"train_file": "train_supervised_small_sample.json",
     #"dev_file": "dev_data_sample.json",
     #"test_file": "test_data_sample.json",
 
-    # Timetravel  datasets
-    "train_file": "train_supervised_small_sample.json",
-    "dev_file": "dev_data_sample.json",
-    "test_file": "test_data_sample.json",
+    # Timetravel,AblatedTimeTravel datasets
+    "train_file": "train_supervised_small.json",
+    "dev_file": "dev_data.json",
+    "test_file": "test_data.json",
 
     # Sample Art dataset
     #"train_file": "art_train_data_sample.json",
@@ -50,23 +51,29 @@ CONFIG = {
     "use_custom_loss": False,  # Whether to use a custom loss function (set to False for MLE)
     "output_attentions": False,  # Set to True to output attentions from the model (optional)
 
-    # MLE Phase configurations
+    # MLE Training
     "mle_enabled": False,  # Enable MLE training
-    "mle_from_checkpoint": False,  # Start training from scratch (no checkpoint)
-    "mle_checkpoint_path": None,  # No checkpoint path since we start from scratch
+    "mle_from_checkpoint": True,   # Set to True to resume training from the specified mle_checkpoint_path; False starts training from scratch.
+    "mle_checkpoint_path": '/home/agirard/Data/Projects/TimeTravel-PolicyGradientRL/models/mle_2025-01-28-11/mle_checkpoint_epoch=epoch=2-val_loss=validation_mle_loss=2.04.ckpt',  # MLE3_1-1_Ablated-TT
     "mle_epochs": 3,  # Number of epochs to train with MLE
 
-    # PG Phase configurations (disabled in this experiment)
-    "pg_enabled": True,  # Disable policy gradient training (PG phase)
-    "pg_from_checkpoint": True,  # Start PG training from the best MLE checkpoint, not a separate checkpoint
-    #"pg_checkpoint_path": '/home/agirard/Data/Projects/TimeTravel-PolicyGradientRL/models/mle_2025-01-22-14/mle_checkpoint_epoch=epoch=2-val_loss=validation_mle_loss=0.95.ckpt',# MLE3_10-1
-    #"pg_checkpoint_path": '/data/agirard/Projects/TimeTravel-PolicyGradientRL/models/mle_2025-01-15-12/mle_checkpoint_epoch=epoch=2-val_loss=validation_mle_loss=0.90.ckpt',   # MLE3_5-1
-    "pg_checkpoint_path": '/data/agirard/Projects/TimeTravel-PolicyGradientRL/models/mle_2024-12-03-15/mle_checkpoint_epoch=epoch=2-val_loss=validation_mle_loss=0.88.ckpt',   # MLE3_1-1
+    # PG Training
+    "pg_enabled": True,  # Set to True to enable policy gradient (PG) training; False disables it.
+    "pg_from_checkpoint": True,  # If True, PG training starts from the specified pg_checkpoint_path;
+                              # If False, PG training starts from the best MLE checkpoint.
+    #"pg_checkpoint_path": '/home/agirard/Data/Projects/TimeTravel-PolicyGradientRL/models/mle_2025-01-22-14/mle_checkpoint_epoch=epoch=2-val_loss=validation_mle_loss=0.95.ckpt',# MLE3_10-1_TT
+    #"pg_checkpoint_path": '/data/agirard/Projects/TimeTravel-PolicyGradientRL/models/mle_2025-01-15-12/mle_checkpoint_epoch=epoch=2-val_loss=validation_mle_loss=0.90.ckpt',   # MLE3_5-1_TT
+    "pg_checkpoint_path": '/data/agirard/Projects/TimeTravel-PolicyGradientRL/models/mle_2024-12-03-15/mle_checkpoint_epoch=epoch=2-val_loss=validation_mle_loss=0.88.ckpt',   # MLE3_1-1_TT
+    # "pg_checkpoint_path": '/home/agirard/Data/Projects/TimeTravel-PolicyGradientRL/models/mle_2025-01-28-11/mle_checkpoint_epoch=epoch=2-val_loss=validation_mle_loss=2.04.ckpt',  # MLE3_1-1_Ablated-TT
     "pg_epochs": 3,  # Number of epochs to fine-tune with PG
 
-    # PG Phase Reward-based training configurations
-    "reward_metric": "bart",   ## Primary reward metric for PG (e.g., "rouge", "bert", "bart","bleu") (default to "rouge")
-    "baseline_score": 0.5,  # Baseline score for PG (used to calculate rewards)
+    # Additional configuration for scoring metrics
+    "reward_metric": "bart",   # "rouge","bart", "bert","bleu" (default to "rouge")
+
+    # **Experiment Selection**
+    "pg_experiment": "delta_m1",  # Options: "fixed", "dynamic", "delta_m1"
+    "baseline_score": 0.5,  # Used for PG fixed baseline experiment
+    "delta_m1_enabled": True,  # Enable Delta_M1 reward adjustments
   
     # Additional configuration for scoring metrics 
     "use_bert": True,  # Disable BERT scorer
@@ -75,7 +82,7 @@ CONFIG = {
     "bert_scorer_batch_size": 4,  # Batch size for BERT scorer 
 
     "use_bleu": True,  # Disable BLEU scorer,
-       
+
     "use_bart": True,  # Disable BART scorer
     "bart_scorer_checkpoint": "facebook/bart-large-cnn"  # Default BART model for scorer 
 }
