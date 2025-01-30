@@ -15,11 +15,13 @@ import wandb
 # Initialize a logger for debugging and output control
 logger = logging.getLogger(__name__)
 
+
 class FlanT5FineTuner(pl.LightningModule):
     """
     A PyTorch Lightning module for fine-tuning the Flan-T5 model using policy gradient reinforcement learning.
     Supports both Maximum Likelihood Estimation (MLE) and Policy Gradient (PG) training modes.
     """
+
     def __init__(self, model_name, model_dir, file_label=""):
         """
         Initializes the fine-tuner with the specified model and tokenizer.
@@ -80,7 +82,11 @@ class FlanT5FineTuner(pl.LightningModule):
                 input_ids=input_ids,
                 attention_mask=attention_mask,
                 max_length=CONFIG['max_gen_length'],
-                num_beams=1,  # Greedy decoding
+                # num_beams=1,  # Greedy decoding
+                do_sample=True,  # Enable sampling
+                # top_k=50,  # Use Top-K sampling
+                # top_p=0.95,  # Use nucleus sampling
+                # temperature= 0.7,  # Controls randomness; lower values make outputs more deterministic
                 output_scores=True,
                 return_dict_in_generate=True
             )
@@ -106,7 +112,7 @@ class FlanT5FineTuner(pl.LightningModule):
             masked_logits[:, :, vocab_size:] = -float('inf')
         else:
             raise ValueError(f"Unexpected logits dimension: expected 2 or 3, got {logits.dim()}")
-        
+
         return masked_logits
 
     def custom_loss(self, outputs, targets, differential_weights):
@@ -115,7 +121,8 @@ class FlanT5FineTuner(pl.LightningModule):
         """
         logits_flat = outputs.view(-1, outputs.size(-1))  # Reshape to [batch_size * seq_length, vocab_size]
         targets_flat = targets.view(-1)  # Flatten targets to [batch_size * seq_length]
-        differential_weights_flat = differential_weights.view(-1)  # Flatten weights to match sequence length [batch_size * seq_length]  
+        differential_weights_flat = differential_weights.view(
+            -1)  # Flatten weights to match sequence length [batch_size * seq_length]
 
         # Compute the standard loss function without reduction to get a loss value per token.
         loss_per_token = F.cross_entropy(logits_flat, targets_flat, reduction='none')
@@ -125,7 +132,7 @@ class FlanT5FineTuner(pl.LightningModule):
 
         # Calculate the mean of the weighted losses to get a single scalar representing the batch's loss.
         mean_weighted_loss = weighted_loss_per_token.mean()
-        
+
         return mean_weighted_loss
 
     def calculate_policy_gradient_loss(self, generated_tokens, logits, rewards, baseline):
@@ -148,15 +155,11 @@ class FlanT5FineTuner(pl.LightningModule):
         # Sum log probabilities across the sequence dimension
         sequence_log_prob_sum = token_log_probs.sum(dim=1)
 
-
         # Handle special case for BART (negative rewards)
-        #if CONFIG.get("reward_metric") == "bart":
+        # if CONFIG.get("reward_metric") == "bart":
         #    rewards = rewards + 4  # add a Baseline to move to the positif size but you keep the magnitude
-        # Calculate rewards relative to the dynamic baseline
-        adjusted_rewards = rewards - baseline
-
         # Calculate policy gradient loss
-        return -(adjusted_rewards * sequence_log_prob_sum).mean()
+        return -(rewards * sequence_log_prob_sum).mean()
 
     def training_step(self, batch, batch_idx):
         """
@@ -176,29 +179,48 @@ class FlanT5FineTuner(pl.LightningModule):
         # Forward pass
         generated_tokens, logits = self.forward(input_ids=input_ids, attention_mask=attention_mask)
         generated_texts = self.tokenizer.batch_decode(generated_tokens, skip_special_tokens=True)
+
+        # Get ground-truth references
         edited_endings = [str(ee) for ee in batch['edited_ending']]
+        original_endings = [str(oe) for oe in batch['original_ending']]
 
-        # Calculate rewards for generated texts
-        scores = self.metrics_evaluator.calculate_score(generated_texts, edited_endings).detach()
+        # Calculate rewards
+        score_pred_edited = self.metrics_evaluator.calculate_score(generated_texts, edited_endings).detach()
+        score_pred_original = self.metrics_evaluator.calculate_score(generated_texts, original_endings).detach()
 
-        # Calculate dynamic baseline as the mean of BART scores in the current batch
-        dynamic_baseline = scores.mean().item()
+        if CONFIG["pg_experiment"] == "fixed":
+            rewards = score_pred_edited - CONFIG["baseline_score"]
+            dynamic_baseline = 0.0  # No dynamic baseline needed
 
-        #rewards = scores - CONFIG["baseline_score"]
+        elif CONFIG["pg_experiment"] == "dynamic":
+            dynamic_baseline = score_pred_edited.mean().detach()
+            rewards = score_pred_edited - dynamic_baseline
 
-        # Adjust rewards using the dynamic baseline
-        rewards = scores - dynamic_baseline
+        elif CONFIG["pg_experiment"] == "delta_m1":
+            delta_m1 = score_pred_edited - score_pred_original
+            rewards = score_pred_edited + delta_m1
+            dynamic_baseline = rewards.mean().detach()
+            rewards = rewards - dynamic_baseline
 
-        # Calculate PG loss
-        pg_loss = self.calculate_policy_gradient_loss(generated_tokens, logits, rewards, dynamic_baseline)
-        print(f'pg_loss -> {pg_loss}, dynamic_baseline -> {dynamic_baseline}')
+        else:
+            raise ValueError(f"Invalid PG experiment: {CONFIG['pg_experiment']}")
 
-        # Log Policy Gradient-specific training metrics
+            # Calculate PG loss
+        pg_loss = self.calculate_policy_gradient_loss(generated_tokens, logits, rewards, baseline=dynamic_baseline)
+
+        # Logging
         self.log('training_pg_loss', pg_loss, on_step=True, on_epoch=True, prog_bar=True, logger=True)
         self.log('training_pg_reward_mean', rewards.mean(), on_step=True, on_epoch=True, prog_bar=True, logger=True)
         self.log('training_pg_baseline', dynamic_baseline, on_step=True, on_epoch=True, prog_bar=True, logger=True)
 
-        return pg_loss  # Return PG loss for optimization
+        if CONFIG["pg_experiment"] == "delta_m1":
+            self.log('training_pg_delta_m1_mean', delta_m1.mean().item(), on_step=True, on_epoch=True, prog_bar=True,
+                     logger=True)
+
+        logger.info(
+            f'[TRAIN] PG Loss: {pg_loss}, Baseline: {dynamic_baseline}, ΔM1 Mean: {delta_m1.mean().item() if CONFIG["pg_experiment"] == "delta_m1" else "N/A"}')
+
+        return pg_loss
 
     def _training_step_mle(self, batch, input_ids, attention_mask, labels):
         """
@@ -245,23 +267,39 @@ class FlanT5FineTuner(pl.LightningModule):
         generated_tokens, logits = self.forward(input_ids=input_ids, attention_mask=attention_mask)
         generated_texts = self.tokenizer.batch_decode(generated_tokens, skip_special_tokens=True)
         edited_endings = [str(ee) for ee in batch['edited_ending']]
+        original_endings = [str(oe) for oe in batch['original_ending']]
 
-        # Calculate sentence-level scores
-        scores = self.metrics_evaluator.calculate_score(generated_texts, edited_endings).detach()
-        self.epoch_scores.extend(scores.tolist())  # Save validation scores for the dataset
+        # Calculate scores
+        score_pred_edited = self.metrics_evaluator.calculate_score(generated_texts, edited_endings).detach()
+        score_pred_original = self.metrics_evaluator.calculate_score(generated_texts, original_endings).detach()
 
-        # Calculate dynamic baseline for validation
-        dynamic_baseline = scores.mean().item()
+        # Handle the different experiments
+        if CONFIG["pg_experiment"] == "fixed":
+            rewards = score_pred_edited - CONFIG["baseline_score"]
+            dynamic_baseline = 0.0  # No dynamic baseline needed
 
-        # Calculate rewards and PG loss
-        # rewards = scores - CONFIG["baseline_score"]
-        rewards = scores - dynamic_baseline
-        pg_val_loss = self.calculate_policy_gradient_loss(generated_tokens, logits, rewards, dynamic_baseline)
+        elif CONFIG["pg_experiment"] == "dynamic":
+            dynamic_baseline = score_pred_edited.mean().detach()
+            rewards = score_pred_edited - dynamic_baseline
 
-        # Log metrics
+        elif CONFIG["pg_experiment"] == "delta_m1":
+            delta_m1 = score_pred_edited - score_pred_original
+            rewards = score_pred_edited + delta_m1
+            dynamic_baseline = rewards.mean().detach()
+
+        else:
+            raise ValueError(f"Invalid PG experiment: {CONFIG['pg_experiment']}")
+
+        # Compute PG validation loss (baseline = 0.0, since no updates occur)
+        pg_val_loss = self.calculate_policy_gradient_loss(generated_tokens, logits, rewards, baseline=0.0)
+
+        # Log validation metrics
         self.log('validation_pg_loss', pg_val_loss, on_epoch=True, prog_bar=True, logger=True)
         self.log('validation_pg_reward_mean', rewards.mean(), on_epoch=True, prog_bar=True, logger=True)
         self.log('validation_pg_baseline', dynamic_baseline, on_epoch=True, prog_bar=True, logger=True)
+
+        if CONFIG["pg_experiment"] == "delta_m1":
+            self.log('validation_pg_delta_m1_mean', delta_m1.mean().item(), on_epoch=True, prog_bar=True, logger=True)
 
         # Save validation details
         for i in range(len(generated_texts)):
@@ -274,6 +312,10 @@ class FlanT5FineTuner(pl.LightningModule):
                 'Edited Ending': edited_endings[i],
                 'Generated Text': generated_texts[i]
             })
+
+        logger.info(
+            f'[VALIDATION] Epoch {self.current_epoch} | PG Loss: {pg_val_loss}, ΔM1 Mean: {delta_m1.mean().item() if CONFIG["pg_experiment"] == "delta_m1" else "N/A"}')
+
         return pg_val_loss
 
     def _validation_step_mle(self, batch, input_ids, attention_mask, labels):
@@ -285,20 +327,11 @@ class FlanT5FineTuner(pl.LightningModule):
 
         # Decode generated texts
         generated_texts = self.tokenizer.batch_decode(
-            self.model.generate(input_ids=input_ids, attention_mask=attention_mask, max_length=CONFIG['max_gen_length']),
+            self.model.generate(input_ids=input_ids, attention_mask=attention_mask,
+                                max_length=CONFIG['max_gen_length']),
             skip_special_tokens=True
         )
         edited_endings = [str(ee) for ee in batch['edited_ending']]
-
-        # Filter empty/generated texts
-        #non_empty_indices = [i for i, text in enumerate(generated_texts) if text.strip()]
-        #if not non_empty_indices:
-        #    logger.warning("All generated texts are empty in this batch; skipping ROUGE calculation.")
-        #    return mle_val_loss
-
-        # Apply filtering
-        #generated_texts = [generated_texts[i] for i in non_empty_indices]
-        #edited_endings = [edited_endings[i] for i in non_empty_indices]
 
         # Calculate sentence-level scores
         scores = self.metrics_evaluator.calculate_score(generated_texts, edited_endings).detach()
@@ -356,23 +389,41 @@ class FlanT5FineTuner(pl.LightningModule):
         generated_tokens, logits = self.forward(input_ids=input_ids, attention_mask=attention_mask)
         generated_texts = self.tokenizer.batch_decode(generated_tokens, skip_special_tokens=True)
         edited_endings = [str(ee) for ee in batch['edited_ending']]
+        original_endings = [str(oe) for oe in batch['original_ending']]
 
-        scores = self.metrics_evaluator.calculate_score(generated_texts, edited_endings).detach()
-        self.epoch_test_scores.extend(scores.tolist())
+        # Compute scores
+        score_pred_edited = self.metrics_evaluator.calculate_score(generated_texts, edited_endings).detach()
+        score_pred_original = self.metrics_evaluator.calculate_score(generated_texts, original_endings).detach()
 
-        # Calculate dynamic baseline as the mean of BART scores
-        dynamic_baseline = scores.mean().item()
+        # Handle the different experiments
+        if CONFIG["pg_experiment"] == "fixed":
+            rewards = score_pred_edited - CONFIG["baseline_score"]
+            dynamic_baseline = 0.0  # No dynamic baseline needed
 
-        # rewards = scores - CONFIG["baseline_score"]
-        rewards = scores - dynamic_baseline
+        elif CONFIG["pg_experiment"] == "dynamic":
+            dynamic_baseline = score_pred_edited.mean().detach()
+            rewards = score_pred_edited - dynamic_baseline
 
-        pg_test_loss = self.calculate_policy_gradient_loss(generated_tokens, logits, rewards, dynamic_baseline)
+        elif CONFIG["pg_experiment"] == "delta_m1":
+            delta_m1 = score_pred_edited - score_pred_original
+            rewards = score_pred_edited + delta_m1
+            dynamic_baseline = rewards.mean().detach()
+
+        else:
+            raise ValueError(f"Invalid PG experiment: {CONFIG['pg_experiment']}")
+
+        # Compute PG test loss (baseline = 0.0, since no updates occur)
+        pg_test_loss = self.calculate_policy_gradient_loss(generated_tokens, logits, rewards, baseline=0.0)
 
         # Log test metrics
-        self.log('test_pg_loss', pg_test_loss, on_step=False, on_epoch=True, prog_bar=True, logger=True)
-        self.log('test_pg_reward_mean', rewards.mean(), on_step=False, on_epoch=True, prog_bar=True, logger=True)
-        self.log('test_pg_baseline', dynamic_baseline, on_step=False, on_epoch=True, prog_bar=True, logger=True)
+        self.log('test_pg_loss', pg_test_loss, on_epoch=True, prog_bar=True, logger=True)
+        self.log('test_pg_reward_mean', rewards.mean(), on_epoch=True, prog_bar=True, logger=True)
+        self.log('test_pg_baseline', dynamic_baseline, on_epoch=True, prog_bar=True, logger=True)
 
+        if CONFIG["pg_experiment"] == "delta_m1":
+            self.log('test_pg_delta_m1_mean', delta_m1.mean().item(), on_epoch=True, prog_bar=True, logger=True)
+
+        # Save test details
         for i in range(len(generated_texts)):
             self.epoch_test_details.append({
                 'Epoch': self.current_epoch,
@@ -384,6 +435,9 @@ class FlanT5FineTuner(pl.LightningModule):
                 'Generated Text': generated_texts[i]
             })
 
+        logger.info(
+            f'[TEST] Epoch {self.current_epoch} | PG Loss: {pg_test_loss}, ΔM1 Mean: {delta_m1.mean().item() if CONFIG["pg_experiment"] == "delta_m1" else "N/A"}')
+
         return pg_test_loss
 
     def _test_step_mle(self, batch, input_ids, attention_mask, labels):
@@ -394,7 +448,8 @@ class FlanT5FineTuner(pl.LightningModule):
         mle_test_loss = outputs.loss
 
         generated_texts = self.tokenizer.batch_decode(
-            self.model.generate(input_ids=input_ids, attention_mask=attention_mask, max_length=CONFIG['max_gen_length']),
+            self.model.generate(input_ids=input_ids, attention_mask=attention_mask,
+                                max_length=CONFIG['max_gen_length']),
             skip_special_tokens=True
         )
         edited_endings = [str(ee) for ee in batch['edited_ending']]

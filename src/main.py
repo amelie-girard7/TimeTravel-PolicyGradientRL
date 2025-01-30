@@ -190,8 +190,7 @@ def main():
         CONFIG["data_dir"], 
         tokenizer, 
         CONFIG["batch_size"], 
-        CONFIG["num_workers"], 
-        dataset_type=dataset_type  # Explicitly pass the dataset_type
+        CONFIG["num_workers"],
     )
     train_key, dev_key, test_key = CONFIG["train_file"].split('.')[0], CONFIG["dev_file"].split('.')[0], CONFIG["test_file"].split('.')[0]
 
@@ -297,8 +296,6 @@ def main():
                 best_epoch=best_epoch,
                 phase="validation"
             )
-            
-
 
 if __name__ == '__main__':
     logger.info("Starting the main process...")
