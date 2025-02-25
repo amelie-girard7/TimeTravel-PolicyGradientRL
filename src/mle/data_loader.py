@@ -2,8 +2,8 @@
 import pandas as pd
 from torch.utils.data import Dataset, DataLoader
 from pathlib import Path
-from src.utils.utils import preprocess_data, collate_fn
-from src.utils.config import CONFIG
+from src.mle.utils.utils import preprocess_data, collate_fn
+from src.mle.utils.config import CONFIG
 
 class CustomJSONDataset(Dataset):
     """

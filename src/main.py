@@ -1,4 +1,5 @@
 # /data/agirard/Projects/TimeTravel-PolicyGradientRL/src/main.py
+import sys
 import os
 import datetime
 import logging
@@ -12,6 +13,9 @@ from src.utils.metrics import MetricsEvaluator
 from src.utils.config import CONFIG
 import pandas as pd
 import re
+
+# Add project root to Python path
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 # Set up basic logging configuration
 logging.basicConfig(level=logging.INFO)
@@ -190,8 +194,7 @@ def main():
         CONFIG["data_dir"], 
         tokenizer, 
         CONFIG["batch_size"], 
-        CONFIG["num_workers"], 
-        dataset_type=dataset_type  # Explicitly pass the dataset_type
+        CONFIG["num_workers"],
     )
     train_key, dev_key, test_key = CONFIG["train_file"].split('.')[0], CONFIG["dev_file"].split('.')[0], CONFIG["test_file"].split('.')[0]
 
@@ -214,7 +217,7 @@ def main():
             monitor='validation_mle_loss', # Metric to monitor during training
             mode='min', # Save the checkpoint when the validation loss decreases (minimum is better)
             save_top_k=1, # Keeping only the top 1 checkpoint, the one with the minimum loss
-            filename="mle_checkpoint_epoch={epoch}-val_loss={validation_mle_loss:.2f}" # File name format including epoch and loss
+            filename="mle_checkpoint_epoch-{epoch:02d}-step-{step:06d}-val_loss={validation_mle_loss:.2f}"
         )
 
         trainer = setup_trainer(CONFIG["mle_epochs"], mle_checkpoint_callback, wandb_logger)
@@ -263,9 +266,9 @@ def main():
         pg_checkpoint_callback = ModelCheckpoint(
             dirpath=model_dir,
             monitor='validation_pg_loss',
-            mode='max',
+            mode='min',
             save_top_k=1,
-            filename="pg_checkpoint_epoch={epoch}-val_loss={validation_pg_loss:.2f}"
+            filename="pg_checkpoint_epoch-{epoch:02d}-step-{step:06d}-val_loss-{validation_pg_loss:.2f}"
         )
 
         trainer = setup_trainer(CONFIG["pg_epochs"], pg_checkpoint_callback, wandb_logger)
@@ -297,8 +300,6 @@ def main():
                 best_epoch=best_epoch,
                 phase="validation"
             )
-            
-
 
 if __name__ == '__main__':
     logger.info("Starting the main process...")

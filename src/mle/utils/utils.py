@@ -7,7 +7,7 @@ import pandas as pd
 import torch
 import torch.nn.utils.rnn
 import uuid  # Add this import statement
-from src.utils.config import CONFIG
+from src.mle.utils.config import CONFIG
 
 logger = logging.getLogger(__name__)
 

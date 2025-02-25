@@ -1,4 +1,4 @@
-# /data/agirard/Projects/TimeTravel-PolicyGradientRL/src/models/model.py
+# /data/agirard/Projects/TimeTravel-PolicyGradientRL/src/pg/models/model.py
 import csv
 import logging
 import os
@@ -7,8 +7,8 @@ import torch.nn.functional as F
 from transformers import T5ForConditionalGeneration, T5Config, T5Tokenizer
 import pytorch_lightning as pl
 from pathlib import Path
-from src.utils.config import CONFIG
-from src.utils.metrics import MetricsEvaluator
+from src.pg.utils.config import CONFIG
+from src.pg.utils.metrics import MetricsEvaluator
 import pandas as pd
 import wandb
 
@@ -17,10 +17,6 @@ logger = logging.getLogger(__name__)
 
 
 class FlanT5FineTuner(pl.LightningModule):
-    """
-    A PyTorch Lightning module for fine-tuning the Flan-T5 model using policy gradient reinforcement learning.
-    Supports both Maximum Likelihood Estimation (MLE) and Policy Gradient (PG) training modes.
-    """
 
     def __init__(self, model_name, model_dir, file_label=""):
         """
@@ -57,42 +53,20 @@ class FlanT5FineTuner(pl.LightningModule):
         # Initialize MetricsEvaluator to handle custom scoring for rewards
         self.metrics_evaluator = MetricsEvaluator()
 
-        # This attribute will be set in main.py to toggle between MLE and PG modes
-        self.use_policy_gradient = False
 
-        self.epoch_scores = []  # Initialize the list to store scores
-
-    def forward(self, input_ids, attention_mask, labels=None):
-        """
-        Forward pass through the T5 model.
-        If labels are provided, calculates the loss; otherwise, returns generated tokens and logits.
-        """
-        if labels is not None:
-            # MLE training mode with labels for loss calculation
-            outputs = self.model(
-                input_ids=input_ids,
-                attention_mask=attention_mask,
-                labels=labels,
-                output_attentions=False
-            )
-            return outputs
-        else:
-            # PG mode generates tokens without labels
-            outputs = self.model.generate(
-                input_ids=input_ids,
-                attention_mask=attention_mask,
-                max_length=CONFIG['max_gen_length'],
-                # num_beams=1,  # Greedy decoding
-                do_sample=True,  # Enable sampling
-                #top_k=50,  # Use Top-K sampling
-                #top_p=0.95,  # Use nucleus sampling
-                temperature=1.5,  # Controls randomness; lower values make outputs more deterministic (try the values 1 , 1.5 , 0.7)
-                output_scores=True,
-                return_dict_in_generate=True
-            )
-            generated_tokens = outputs.sequences
-            logits = outputs.scores
-            return generated_tokens, logits
+    def forward(self, input_ids, attention_mask):
+        outputs = self.model.generate(
+            input_ids=input_ids,
+            attention_mask=attention_mask,
+            max_length=CONFIG['max_gen_length'],
+            do_sample=True, 
+            temperature=1.5,
+            output_scores=True,
+            return_dict_in_generate=True
+        )
+        generated_tokens = outputs.sequences
+        logits = outputs.scores
+        return generated_tokens, logits
 
     def apply_vocab_masking(self, logits):
         """
@@ -115,25 +89,6 @@ class FlanT5FineTuner(pl.LightningModule):
 
         return masked_logits
 
-    def custom_loss(self, outputs, targets, differential_weights):
-        """
-        Custom loss function that applies differential weights to the calculation.
-        """
-        logits_flat = outputs.view(-1, outputs.size(-1))  # Reshape to [batch_size * seq_length, vocab_size]
-        targets_flat = targets.view(-1)  # Flatten targets to [batch_size * seq_length]
-        differential_weights_flat = differential_weights.view(
-            -1)  # Flatten weights to match sequence length [batch_size * seq_length]
-
-        # Compute the standard loss function without reduction to get a loss value per token.
-        loss_per_token = F.cross_entropy(logits_flat, targets_flat, reduction='none')
-
-        # Apply the differential weights to each token's loss.
-        weighted_loss_per_token = loss_per_token * differential_weights_flat
-
-        # Calculate the mean of the weighted losses to get a single scalar representing the batch's loss.
-        mean_weighted_loss = weighted_loss_per_token.mean()
-
-        return mean_weighted_loss
 
     def calculate_policy_gradient_loss(self, generated_tokens, logits, rewards, baseline):
         """
@@ -143,6 +98,9 @@ class FlanT5FineTuner(pl.LightningModule):
         # Stack logits along the sequence dimension and apply log softmax
         logits = torch.log_softmax(torch.stack(logits, dim=1), dim=-1)
         logits = self.apply_vocab_masking(logits)  # Apply masking to stacked logits
+
+        # Detach logits after applying masking to free memory
+        logits = logits.detach()
 
         # Gather the log probabilities for the generated tokens
         labels_for_indexing = generated_tokens[:, 1:].contiguous()
@@ -161,23 +119,15 @@ class FlanT5FineTuner(pl.LightningModule):
             # Calculate policy gradient loss
         return -(rewards * sequence_log_prob_sum).mean()
 
+
     def training_step(self, batch, batch_idx):
-        """
-        Processes a batch during the training phase. Routes to PG or MLE logic based on mode.
-        """
         input_ids, attention_mask, labels = batch['input_ids'], batch['attention_mask'], batch['labels']
-
-        if self.use_policy_gradient:
-            return self._training_step_pg(batch, input_ids, attention_mask)
-        else:
-            return self._training_step_mle(batch, input_ids, attention_mask, labels)
-
-    def _training_step_pg(self, batch, input_ids, attention_mask):
-        """
-        Training-specific logic for Policy Gradient (PG) mode.
-        """
         # Forward pass
         generated_tokens, logits = self.forward(input_ids=input_ids, attention_mask=attention_mask)
+
+        # Detach logits immediately after forward pass to free memory
+        logits = [logit.detach() for logit in logits]
+
         generated_texts = self.tokenizer.batch_decode(generated_tokens, skip_special_tokens=True)
 
         # Get ground-truth references
@@ -222,49 +172,16 @@ class FlanT5FineTuner(pl.LightningModule):
 
         return pg_loss
 
-    def _training_step_mle(self, batch, input_ids, attention_mask, labels):
-        """
-        Training-specific logic for Maximum Likelihood Estimation (MLE) mode.
-        """
-        # Forward pass
-        outputs = self.forward(input_ids=input_ids, attention_mask=attention_mask, labels=labels)
-        masked_logits = self.apply_vocab_masking(outputs.logits)  # Apply masking to logits
-
-        # Calculate MLE loss
-        if CONFIG['use_custom_loss'] and 'differential_weights' in batch:
-            mle_train_loss = self.custom_loss(masked_logits, batch['labels'], batch['differential_weights'])
-        else:
-            mle_train_loss = outputs.loss
-
-        # Log MLE training loss
-        self.log('training_mle_loss', mle_train_loss, on_step=True, on_epoch=True, prog_bar=True, logger=True)
-
-        # Decode and log scores for generated texts
-        generated_texts = self.tokenizer.batch_decode(masked_logits.argmax(-1), skip_special_tokens=True)
-        edited_endings = [str(ee) for ee in batch['edited_ending']]
-        scores = self.metrics_evaluator.calculate_score(generated_texts, edited_endings).detach()
-        score_mean = scores.mean()
-        self.log('training_mle_score_mean', score_mean, on_step=True, on_epoch=True, prog_bar=True, logger=True)
-
-        return mle_train_loss  # Return MLE loss for optimization
 
     def validation_step(self, batch, batch_idx):
-        """
-        Processes a batch during the validation phase. Routes to PG or MLE logic based on mode.
-        """
+
         input_ids, attention_mask, labels = batch['input_ids'], batch['attention_mask'], batch['labels']
         print(f"Validation Step: Processing batch {batch_idx}")
-
-        if self.use_policy_gradient:
-            return self._validation_step_pg(batch, input_ids, attention_mask)
-        else:
-            return self._validation_step_mle(batch, input_ids, attention_mask, labels)
-
-    def _validation_step_pg(self, batch, input_ids, attention_mask):
-        """
-        Validation-specific logic for Policy Gradient (PG) mode.
-        """
         generated_tokens, logits = self.forward(input_ids=input_ids, attention_mask=attention_mask)
+        
+        # Detach logits to prevent memory overflow
+        logits = [logit.detach() for logit in logits]
+
         generated_texts = self.tokenizer.batch_decode(generated_tokens, skip_special_tokens=True)
         edited_endings = [str(ee) for ee in batch['edited_ending']]
         original_endings = [str(oe) for oe in batch['original_ending']]
@@ -318,40 +235,6 @@ class FlanT5FineTuner(pl.LightningModule):
 
         return pg_val_loss
 
-    def _validation_step_mle(self, batch, input_ids, attention_mask, labels):
-        """
-        Validation-specific logic for Maximum Likelihood Estimation (MLE) mode.
-        """
-        outputs = self.forward(input_ids=input_ids, attention_mask=attention_mask, labels=labels)
-        mle_val_loss = outputs.loss
-
-        # Decode generated texts
-        generated_texts = self.tokenizer.batch_decode(
-            self.model.generate(input_ids=input_ids, attention_mask=attention_mask,
-                                max_length=CONFIG['max_gen_length']),
-            skip_special_tokens=True
-        )
-        edited_endings = [str(ee) for ee in batch['edited_ending']]
-
-        # Calculate sentence-level scores
-        scores = self.metrics_evaluator.calculate_score(generated_texts, edited_endings).detach()
-        self.epoch_scores.extend(scores.tolist())  # Save validation scores for the dataset
-
-        # Log MLE loss
-        self.log('validation_mle_loss', mle_val_loss, on_epoch=True, prog_bar=True, logger=True)
-
-        # Save validation details
-        for i in range(len(generated_texts)):
-            self.epoch_validation_details.append({
-                'Epoch': self.current_epoch,
-                'Premise': batch['premise'][i],
-                'Initial': batch['initial'][i],
-                'Counterfactual': batch['counterfactual'][i],
-                'Original Ending': batch['original_ending'][i],
-                'Edited Ending': edited_endings[i],
-                'Generated Text': generated_texts[i]
-            })
-        return mle_val_loss
 
     def on_validation_epoch_end(self):
         """
@@ -371,22 +254,15 @@ class FlanT5FineTuner(pl.LightningModule):
         self.epoch_validation_details.clear()
         self.epoch_scores.clear()
 
+
+
     def test_step(self, batch, batch_idx):
-        """
-        Processes a batch during the testing phase. Routes to PG or MLE logic based on mode.
-        """
         input_ids, attention_mask, labels = batch['input_ids'], batch['attention_mask'], batch['labels']
-
-        if self.use_policy_gradient:
-            return self._test_step_pg(batch, input_ids, attention_mask)
-        else:
-            return self._test_step_mle(batch, input_ids, attention_mask, labels)
-
-    def _test_step_pg(self, batch, input_ids, attention_mask):
-        """
-        Test-specific logic for Policy Gradient (PG) mode.
-        """
         generated_tokens, logits = self.forward(input_ids=input_ids, attention_mask=attention_mask)
+
+        # Detach logits
+        logits = [logit.detach() for logit in logits]
+
         generated_texts = self.tokenizer.batch_decode(generated_tokens, skip_special_tokens=True)
         edited_endings = [str(ee) for ee in batch['edited_ending']]
         original_endings = [str(oe) for oe in batch['original_ending']]
@@ -440,32 +316,7 @@ class FlanT5FineTuner(pl.LightningModule):
 
         return pg_test_loss
 
-    def _test_step_mle(self, batch, input_ids, attention_mask, labels):
-        """
-        Test-specific logic for Maximum Likelihood Estimation (MLE) mode.
-        """
-        outputs = self.forward(input_ids=input_ids, attention_mask=attention_mask, labels=labels)
-        mle_test_loss = outputs.loss
-
-        generated_texts = self.tokenizer.batch_decode(
-            self.model.generate(input_ids=input_ids, attention_mask=attention_mask,
-                                max_length=CONFIG['max_gen_length']),
-            skip_special_tokens=True
-        )
-        edited_endings = [str(ee) for ee in batch['edited_ending']]
-
-        for i in range(len(generated_texts)):
-            self.epoch_test_details.append({
-                'Epoch': self.current_epoch,
-                'Premise': batch['premise'][i],
-                'Initial': batch['initial'][i],
-                'Counterfactual': batch['counterfactual'][i],
-                'Original Ending': batch['original_ending'][i],
-                'Edited Ending': edited_endings[i],
-                'Generated Text': generated_texts[i]
-            })
-
-        return mle_test_loss
+  
 
     def on_test_epoch_end(self):
         """
