@@ -1,4 +1,4 @@
-# /data/agirard/Projects/TimeTravel-PolicyGradientRL/src/utils/config.py
+# /data/agirard/Projects/TimeTravel-PolicyGradientRL/src/mle/utils/config.py
 import os
 from pathlib import Path
 
@@ -47,35 +47,19 @@ CONFIG = {
     "shuffle": True,  # Shuffle the data during training
     "max_gen_length": 250,  # Maximum length for generated text
 
+    # MLE Training
+    "mle_from_checkpoint": False,   # Set to True to resume training from the specified mle_checkpoint_path; False starts training from scratch.
+    "mle_checkpoint_path": None,  
+    "mle_epochs": 3,  # Number of epochs to train with MLE
+
     # Additional training options
     "use_custom_loss": False,  # Whether to use a custom loss function (set to False for MLE)
     "output_attentions": False,  # Set to True to output attentions from the model (optional)
 
-    # MLE Training
-    "mle_enabled": False,  # Enable MLE training
-    "mle_from_checkpoint": True,   # Set to True to resume training from the specified mle_checkpoint_path; False starts training from scratch.
-    "mle_checkpoint_path": '/home/agirard/Data/Projects/TimeTravel-PolicyGradientRL/models/mle_2025-01-28-11/mle_checkpoint_epoch=epoch=2-val_loss=validation_mle_loss=2.04.ckpt',  # MLE3_1-1_Ablated-TT
-    "mle_epochs": 3,  # Number of epochs to train with MLE
-
-    # PG Training
-    "pg_enabled": True,  # Set to True to enable policy gradient (PG) training; False disables it.
-    "pg_from_checkpoint": True,  # If True, PG training starts from the specified pg_checkpoint_path;
-                              # If False, PG training starts from the best MLE checkpoint.
-    #"pg_checkpoint_path": '/home/agirard/Data/Projects/TimeTravel-PolicyGradientRL/models/mle_2025-01-22-14/mle_checkpoint_epoch=epoch=2-val_loss=validation_mle_loss=0.95.ckpt',# MLE3_10-1_TT
-    #"pg_checkpoint_path": '/data/agirard/Projects/TimeTravel-PolicyGradientRL/models/mle_2025-01-15-12/mle_checkpoint_epoch=epoch=2-val_loss=validation_mle_loss=0.90.ckpt',   # MLE3_5-1_TT
-    "pg_checkpoint_path": '/data/agirard/Projects/TimeTravel-PolicyGradientRL/models/mle_2024-12-03-15/mle_checkpoint_epoch=epoch=2-val_loss=validation_mle_loss=0.88.ckpt',   # MLE3_1-1_TT
-    # "pg_checkpoint_path": '/home/agirard/Data/Projects/TimeTravel-PolicyGradientRL/models/mle_2025-01-28-11/mle_checkpoint_epoch=epoch=2-val_loss=validation_mle_loss=2.04.ckpt',  # MLE3_1-1_Ablated-TT
-    "pg_epochs": 3,  # Number of epochs to fine-tune with PG
-
     # Additional configuration for scoring metrics
     "reward_metric": "bart",   # "rouge","bart", "bert","bleu" (default to "rouge")
 
-    # **Experiment Selection**
-    "pg_experiment": "dynamic",  # Options: "fixed", "dynamic", "delta_m1"
-    "delta_m1_enabled": False,  # Enable Delta_M1 reward adjustments
-    "baseline_score": 0.5,  # Used for PG fixed baseline experiment
 
-  
     # Additional configuration for scoring metrics 
     "use_bert": True,  # Disable BERT scorer
     "bert_scorer_model_type": "microsoft/deberta-xlarge-mnli",  # Default BERT model for scorer 
