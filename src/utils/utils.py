@@ -37,7 +37,7 @@ def load_first_line_from_json(file_path):
         logger.error(f"Error reading from {file_path}: {e}")
         raise IOError(f"Error reading from {file_path}: {e}")
 
-def calculate_differential_weights(tokenized_labels, tokenizer, differences, high_weight=10, base_weight=1):
+def calculate_differential_weights(tokenized_labels, tokenizer, differences, high_weight=1, base_weight=1):
         """
         Calculate differential weights for tokenized labels (edited endings) based on diff
         erences.
@@ -55,20 +55,19 @@ def calculate_differential_weights(tokenized_labels, tokenizer, differences, hig
         
         return differential_weights    
 
-def preprocess_data(row, tokenizer, dataset_type="TimeTravel"):
+def preprocess_data(row, tokenizer):
     """
     Prepares a single row of data for model input by tokenizing the text fields.
 
     Args:
         row (dict): A single row of data containing the fields required for the input.
         tokenizer (Tokenizer): The tokenizer to use for tokenizing the text fields.
-        dataset_type (str): Specifies the type of dataset to determine preprocessing logic.
-            Options: "ART", "TimeTravel", "AblatedTimeTravel".
 
     Returns:
         dict: A dictionary containing tokenized input, attention masks, and labels.
     """
     try:
+        dataset_type = CONFIG["dataset_type"]  # Access dataset_type from CONFIG
         separator_token = "</s>"
 
         if dataset_type in {"ART", "AblatedTimeTravel"}:
