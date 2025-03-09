@@ -164,22 +164,55 @@ def main():
     best_checkpoint = pg_checkpoint_callback.best_model_path
     best_epoch = extract_epoch_from_checkpoint(best_checkpoint)
 
-    evaluate_and_save(
-        model_dir=model_dir,
-        loader=dataloaders[test_key],
-        best_checkpoint=best_checkpoint,
-        file_label="_pg",
-        best_epoch=best_epoch,
-        phase="test"
+    # Load explicitly the best checkpoint
+    model = setup_model(model_dir, file_label="_pg", checkpoint_path=best_checkpoint)
+
+    # Explicitly set up Trainer without logging for final evaluation
+    trainer = Trainer(accelerator='gpu', devices=1, logger=False)
+
+
+    # Run explicit validation pass to collect and log details
+    trainer.validate(model, dataloaders[dev_key], verbose=False)
+
+
+    # Save detailed CSV only here from the best checkpoint
+    val_details_df = pd.DataFrame(model.epoch_validation_details)
+    val_details_file = os.path.join(model_dir, f"validation_details_epoch_{best_epoch}_pg.csv")
+    val_details_df.to_csv(val_details_file, index=False)
+
+
+    # Calculate and save validation metrics
+    evaluator = MetricsEvaluator()
+    val_metrics = evaluator.calculate_all_metrics(
+        all_generated_texts=val_details_df['Generated Text'].tolist(),
+        all_edited_endings=val_details_df['Edited Ending'].tolist(),
+        all_counterfactuals=val_details_df['Counterfactual'].tolist(),
+        all_initials=val_details_df['Initial'].tolist(),
+        all_premises=val_details_df['Premise'].tolist(),
+        all_original_endings=val_details_df['Original Ending'].tolist()
     )
-    evaluate_and_save(
-        model_dir=model_dir,
-        loader=dataloaders[dev_key],
-        best_checkpoint=best_checkpoint,
-        file_label="_pg",
-        best_epoch=best_epoch,
-        phase="validation"
-    )
+
+    val_metrics_df = pd.DataFrame.from_dict(val_metrics, orient='index', columns=['Score']).reset_index()
+    val_metrics_df.columns = ['Metric', 'Score']
+    val_metrics_file = os.path.join(model_dir, f"validation_details_metrics_epoch_{best_epoch}.csv")
+    val_metrics_df.to_csv(val_metrics_file, index=False)
+
+    # evaluate_and_save(
+    #     model_dir=model_dir,
+    #     loader=dataloaders[test_key],
+    #     best_checkpoint=best_checkpoint,
+    #     file_label="_pg",
+    #     best_epoch=best_epoch,
+    #     phase="test"
+    # )
+    # evaluate_and_save(
+    #     model_dir=model_dir,
+    #     loader=dataloaders[dev_key],
+    #     best_checkpoint=best_checkpoint,
+    #     file_label="_pg",
+    #     best_epoch=best_epoch,
+    #     phase="validation"
+    # )
 
 
 if __name__ == '__main__':
