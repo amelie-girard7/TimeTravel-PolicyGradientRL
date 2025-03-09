@@ -118,7 +118,6 @@ class MetricsEvaluator:
             scores_tensor (torch.Tensor): A tensor of score values per example on the specified device.
         """
         score_metric = CONFIG.get("reward_metric", "rouge")
-        #Todo: Amelie, why this is cpu not gpu?
         scorer_device = CONFIG.get("scorer_device", "cpu")
 
         # Debugging prints for input and metric selection
@@ -129,6 +128,11 @@ class MetricsEvaluator:
         # Ensure inputs are lists of strings
         generated_texts = [str(gt) for gt in generated_texts]
         references = [str(ref) for ref in references]
+
+
+        # For ROUGE, ensure no hypothesis is empty by replacing empty strings with a placeholder
+        #if score_metric == "rouge":
+        #    generated_texts = [gt if gt.strip() != "" else " " for gt in generated_texts]
 
         # Case 1: ROUGE-L is selected as the score metric
         if score_metric == "rouge":

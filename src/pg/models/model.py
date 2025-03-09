@@ -53,14 +53,13 @@ class FlanT5FineTuner(pl.LightningModule):
         # Initialize MetricsEvaluator to handle custom scoring for rewards
         self.metrics_evaluator = MetricsEvaluator()
 
-
     def forward(self, input_ids, attention_mask):
         outputs = self.model.generate(
             input_ids=input_ids,
             attention_mask=attention_mask,
             max_length=CONFIG['max_gen_length'],
             do_sample=True, 
-            temperature=1.5,
+            temperature=0.7,
             output_scores=True,
             return_dict_in_generate=True
         )
@@ -89,18 +88,14 @@ class FlanT5FineTuner(pl.LightningModule):
 
         return masked_logits
 
-
     def calculate_policy_gradient_loss(self, generated_tokens, logits, rewards, baseline):
         """
         Calculates policy gradient loss based on generated tokens and rewards.
-        Handles the case where BART scores are negative by flipping the sign of rewards.
+        BART scores are flipped in sign to change from reward to loss
         """
         # Stack logits along the sequence dimension and apply log softmax
         logits = torch.log_softmax(torch.stack(logits, dim=1), dim=-1)
         logits = self.apply_vocab_masking(logits)  # Apply masking to stacked logits
-
-        # Detach logits after applying masking to free memory
-        logits = logits.detach()
 
         # Gather the log probabilities for the generated tokens
         labels_for_indexing = generated_tokens[:, 1:].contiguous()
@@ -114,19 +109,14 @@ class FlanT5FineTuner(pl.LightningModule):
         sequence_log_prob_sum = token_log_probs.sum(dim=1)
 
         # Handle special case for BART (negative rewards)
-        if CONFIG.get("reward_metric") == "bart":
-           rewards = rewards + 4  # add a Baseline to move to the positif size but you keep the magnitude
-            # Calculate policy gradient loss
+        #if CONFIG.get("reward_metric") == "bart":
+        #   rewards = rewards + 4  # add a Baseline to move to the positif size but you keep the magnitude
         return -(rewards * sequence_log_prob_sum).mean()
-
 
     def training_step(self, batch, batch_idx):
         input_ids, attention_mask, labels = batch['input_ids'], batch['attention_mask'], batch['labels']
         # Forward pass
         generated_tokens, logits = self.forward(input_ids=input_ids, attention_mask=attention_mask)
-
-        # Detach logits immediately after forward pass to free memory
-        logits = [logit.detach() for logit in logits]
 
         generated_texts = self.tokenizer.batch_decode(generated_tokens, skip_special_tokens=True)
 
@@ -149,6 +139,7 @@ class FlanT5FineTuner(pl.LightningModule):
         elif CONFIG["pg_experiment"] == "delta_m1":
             delta_m1 = score_pred_edited - score_pred_original
             rewards = score_pred_edited + delta_m1
+            #rewards = delta_m1
             dynamic_baseline = rewards.mean().detach()
             rewards = rewards - dynamic_baseline
 
@@ -172,17 +163,25 @@ class FlanT5FineTuner(pl.LightningModule):
 
         return pg_loss
 
-
     def validation_step(self, batch, batch_idx):
 
         input_ids, attention_mask, labels = batch['input_ids'], batch['attention_mask'], batch['labels']
         print(f"Validation Step: Processing batch {batch_idx}")
         generated_tokens, logits = self.forward(input_ids=input_ids, attention_mask=attention_mask)
-        
-        # Detach logits to prevent memory overflow
-        logits = [logit.detach() for logit in logits]
 
         generated_texts = self.tokenizer.batch_decode(generated_tokens, skip_special_tokens=True)
+
+        # Debug: Check for empty generated texts and print details
+        for i, gen_text in enumerate(generated_texts):
+            if not gen_text.strip():  # If text is empty or only whitespace
+                print(f"DEBUG: Empty generated text detected in validation batch {batch_idx}, sample index {i}.")
+                print(f"DEBUG: Input IDs: {input_ids[i]}")
+                if 'premise' in batch:
+                    print(f"DEBUG: Premise: {batch['premise'][i]}")
+                else:
+                    print("DEBUG: 'premise' not found in batch.")
+
+        # Continue with rest of the validation step processing...
         edited_endings = [str(ee) for ee in batch['edited_ending']]
         original_endings = [str(oe) for oe in batch['original_ending']]
 
@@ -201,7 +200,8 @@ class FlanT5FineTuner(pl.LightningModule):
 
         elif CONFIG["pg_experiment"] == "delta_m1":
             delta_m1 = score_pred_edited - score_pred_original
-            rewards = score_pred_edited + delta_m1
+            #rewards = score_pred_edited + delta_m1
+            rewards = delta_m1
             dynamic_baseline = rewards.mean().detach()
 
         else:
@@ -218,10 +218,10 @@ class FlanT5FineTuner(pl.LightningModule):
         if CONFIG["pg_experiment"] == "delta_m1":
             self.log('validation_pg_delta_m1_mean', delta_m1.mean().item(), on_epoch=True, prog_bar=True, logger=True)
 
-        # Save validation details
+        #Save validation details
         for i in range(len(generated_texts)):
             self.epoch_validation_details.append({
-                'Epoch': self.current_epoch,
+                #'Epoch': self.current_epoch,
                 'Premise': batch['premise'][i],
                 'Initial': batch['initial'][i],
                 'Counterfactual': batch['counterfactual'][i],
@@ -235,33 +235,27 @@ class FlanT5FineTuner(pl.LightningModule):
 
         return pg_val_loss
 
-
     def on_validation_epoch_end(self):
         """
         Finalize and save validation results at the end of the validation epoch.
         """
         print("Validation Epoch End")
-        if self.epoch_validation_details:
-            print(f"Saving {len(self.epoch_validation_details)} validation details to {self.val_csv_file_path}.")
-            self.log_to_csv(self.val_csv_file_path, self.epoch_validation_details, epoch=self.current_epoch)
+        #if self.epoch_validation_details:
+            # print(f"Saving {len(self.epoch_validation_details)} validation details to {self.val_csv_file_path}.")
+            # self.log_to_csv(self.val_csv_file_path, self.epoch_validation_details, epoch=self.current_epoch)
 
-        if self.epoch_scores:
-            overall_val_score = torch.tensor(self.epoch_scores).mean().item()
-            print(f"Overall validation score: {overall_val_score}")
-            self.log("overall_score", overall_val_score, prog_bar=True, logger=True)
+        # if self.epoch_scores:
+        #     overall_val_score = torch.tensor(self.epoch_scores).mean().item()
+        #     print(f"Overall validation score: {overall_val_score}")
+        #     self.log("overall_score", overall_val_score, prog_bar=True, logger=True)
 
         # Clear buffers for next validation run
-        self.epoch_validation_details.clear()
-        self.epoch_scores.clear()
-
-
+        #self.epoch_validation_details.clear()
+        #self.epoch_scores.clear()
 
     def test_step(self, batch, batch_idx):
         input_ids, attention_mask, labels = batch['input_ids'], batch['attention_mask'], batch['labels']
         generated_tokens, logits = self.forward(input_ids=input_ids, attention_mask=attention_mask)
-
-        # Detach logits
-        logits = [logit.detach() for logit in logits]
 
         generated_texts = self.tokenizer.batch_decode(generated_tokens, skip_special_tokens=True)
         edited_endings = [str(ee) for ee in batch['edited_ending']]
@@ -283,6 +277,7 @@ class FlanT5FineTuner(pl.LightningModule):
         elif CONFIG["pg_experiment"] == "delta_m1":
             delta_m1 = score_pred_edited - score_pred_original
             rewards = score_pred_edited + delta_m1
+            #rewards = delta_m1
             dynamic_baseline = rewards.mean().detach()
 
         else:
@@ -302,7 +297,7 @@ class FlanT5FineTuner(pl.LightningModule):
         # Save test details
         for i in range(len(generated_texts)):
             self.epoch_test_details.append({
-                'Epoch': self.current_epoch,
+                #'Epoch': self.current_epoch,
                 'Premise': batch['premise'][i],
                 'Initial': batch['initial'][i],
                 'Counterfactual': batch['counterfactual'][i],
@@ -316,39 +311,36 @@ class FlanT5FineTuner(pl.LightningModule):
 
         return pg_test_loss
 
-  
-
     def on_test_epoch_end(self):
         """
         Finalize and save test results at the end of the test epoch.
         """
         print("Test Epoch End")
-        if self.epoch_test_details:
-            print(f"Saving {len(self.epoch_test_details)} test details to {self.test_csv_file_path}.")
-            self.log_to_csv(self.test_csv_file_path, self.epoch_test_details, epoch=self.current_epoch)
+        # if self.epoch_test_details:
+        #     print(f"Saving {len(self.epoch_test_details)} test details to {self.test_csv_file_path}.")
+        #     self.log_to_csv(self.test_csv_file_path, self.epoch_test_details, epoch=self.current_epoch)
 
-        if self.epoch_test_scores:
-            overall_test_score = torch.tensor(self.epoch_test_scores).mean().item()
-            print(f"Overall test score: {overall_test_score}")
-            self.log("test_overall_score", overall_test_score, prog_bar=True, logger=True)
+        # if self.epoch_test_scores:
+        #     overall_test_score = torch.tensor(self.epoch_test_scores).mean().item()
+        #     print(f"Overall test score: {overall_test_score}")
+        #     self.log("test_overall_score", overall_test_score, prog_bar=True, logger=True)
 
         # Clear buffers for next test run
-        self.epoch_test_details.clear()
-        self.epoch_test_scores.clear()
+        #self.epoch_test_details.clear()
+        #self.epoch_test_scores.clear()
 
     def log_to_csv(self, csv_file_path, details, epoch=None):
-        """
-        Writes the details to the specified CSV file.
-        """
         print(f"Writing {len(details)} entries to {csv_file_path}.")
         file_exists = os.path.isfile(csv_file_path)
+
+        # Remove 'Epoch' if present, nothing else
+        for detail in details:
+            detail.pop('Epoch', None)
 
         with open(csv_file_path, 'a', newline='', encoding='utf-8') as csvfile:
             writer = csv.DictWriter(csvfile, fieldnames=details[0].keys())
             if not file_exists:
                 writer.writeheader()
-            for detail in details:
-                detail['Epoch'] = epoch
             writer.writerows(details)
 
     def configure_optimizers(self):

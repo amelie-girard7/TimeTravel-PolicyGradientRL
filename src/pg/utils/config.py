@@ -17,9 +17,9 @@ CONFIG = {
 
     # ******** Data files***********
     # Sample Timetravel sample datasets
-    "train_file": "train_supervised_small.json",
-    "dev_file": "dev_data.json",
-    "test_file": "test_data.json",
+    "train_file": "train_supervised_small_sample.json",
+    "dev_file": "dev_data_sample.json",
+    "test_file": "test_data_sample.json",
 
     # Timetravel,AblatedTimeTravel datasets
     #"train_file": "train_supervised_small.json",
@@ -38,7 +38,7 @@ CONFIG = {
 
     # Model and training configurations
     "model_name": os.getenv('MODEL_NAME', "google/flan-t5-base"),  # Hugging Face model to load
-    "batch_size": int(os.getenv('BATCH_SIZE', 1)),  # Number of samples per batch
+    "batch_size": int(os.getenv('BATCH_SIZE', 4)),  # Number of samples per batch
     "num_workers": int(os.getenv('NUM_WORKERS', 3)),  # Number of workers for data loading
     "learning_rate": float(os.getenv('LEARNING_RATE', 2e-5)),  # Learning rate for the optimizer
 
@@ -53,16 +53,16 @@ CONFIG = {
 
 
     # PG Training
-    "pg_from_checkpoint": False,
-    "pg_checkpoint_path": None,
+    "pg_from_checkpoint": True,
+    "pg_checkpoint_path": "/data/agirard/Projects/TimeTravel-PolicyGradientRL/models/mle_2024-12-03-15/mle_checkpoint_epoch=epoch=2-val_loss=validation_mle_loss=0.88.ckpt",   # MLE3_1-1_TT
     "pg_epochs": 3,  # Number of epochs to fine-tune with PG
 
     # Additional configuration for scoring metrics
-    "reward_metric": "bart",   # "rouge","bart", "bert","bleu" (default to "rouge")
+    "reward_metric": "rouge",   # "rouge","bart", "bert","bleu" (default to "rouge")
 
     # **Experiment Selection**
-    "pg_experiment": "dynamic",  # Options: "fixed", "dynamic", "delta_m1"
-    "delta_m1_enabled": False,  # Enable Delta_M1 reward adjustments
+    "pg_experiment": "delta_m1",  # Options: "fixed", "dynamic", "delta_m1"
+    "delta_m1_enabled": True,  # Enable Delta_M1 reward adjustments
     "baseline_score": 0.5,  # Used for PG fixed baseline experiment
 
   
