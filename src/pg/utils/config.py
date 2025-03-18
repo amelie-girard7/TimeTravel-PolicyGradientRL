@@ -53,9 +53,17 @@ CONFIG = {
 
 
     # PG Training
+    # "pg_from_checkpoint": True,
+    # "pg_checkpoint_path": "/data/agirard/Projects/TimeTravel-PolicyGradientRL/models/mle_2025-03-18-12/checkpoint-epoch=00-val_loss=1.00.ckpt",   # MLE1_TT
+    # "pg_epochs": 5,  # Number of epochs to fine-tune with PG
+
     "pg_from_checkpoint": True,
-    "pg_checkpoint_path": "/data/agirard/Projects/TimeTravel-PolicyGradientRL/models/mle_2024-12-03-15/mle_checkpoint_epoch=epoch=2-val_loss=validation_mle_loss=0.88.ckpt",   # MLE3_1-1_TT
-    "pg_epochs": 3,  # Number of epochs to fine-tune with PG
+    "pg_checkpoint_path": "/data/agirard/Projects/TimeTravel-PolicyGradientRL/models/mle_2025-03-18-13/checkpoint-epoch=01-val_loss=0.98.ckpt",   # MLE2_TT
+    "pg_epochs": 4,  # Number of epochs to fine-tune with PG
+
+    # New configuration for PG objective modifications
+    "objective_clipping": True,  # If True, apply max(0, objective) to rewards
+    "use_greedy_reward": True,  # If True, compute reward using greedy decoding (num_beams=1, do_sample=False)
 
     # Additional configuration for scoring metrics
     "reward_metric": "rouge",   # "rouge","bart", "bert","bleu" (default to "rouge")

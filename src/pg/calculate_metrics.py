@@ -93,15 +93,17 @@ def main():
     """
     # List of repository directories to process.
     repo_paths = [
-        #'/data/agirard/Projects/TimeTravel-PolicyGradientRL/models/pg_2025-03-04-07',  # T5-base, BART, score+Delta_M1, temp 0.7
-        #'/data/agirard/Projects/TimeTravel-PolicyGradientRL/models/pg_2025-03-05-17',  # T5-base, BERT, score+Delta_M1, temp 0.7
-        #'/data/agirard/Projects/TimeTravel-PolicyGradientRL/models/pg_2025-03-03-11',  # T5-base, BART, Delta_M1, temp 0.7
-        # '/data/agirard/Projects/TimeTravel-PolicyGradientRL/models/pg_2025-02-27-09',  # Dynamic, BART, temp 0.7
-        #'/data/agirard/Projects/TimeTravel-PolicyGradientRL/models/pg_2025-02-17-09',  # Dynamic, BART+4, temp 1.5
-        # '/data/agirard/Projects/TimeTravel-PolicyGradientRL/models/pg_2025-02-12-09',  # Dynamic, BART+4, temp 1
-        #'/data/agirard/Projects/TimeTravel-PolicyGradientRL/models/pg_2025-02-06-17',  # Dynamic, BART+4, temp 0.7
-        '/data/agirard/Projects/TimeTravel-PolicyGradientRL/models/pg_2025-02-01-15',  # Fixed, Bart+4, temp 1
-        #'/data/agirard/Projects/TimeTravel-PolicyGradientRL/models/pg_2025-02-02-16',  # Fixed, Bart+4, temp 0.7
+        #'/data/agirard/Projects/TimeTravel-PolicyGradientRL/models/pg_2025-03-04-07',  # T5-base, BART, score+Delta_M1, temp 0.7 , MLE3
+        #'/data/agirard/Projects/TimeTravel-PolicyGradientRL/models/pg_2025-03-05-17',  # T5-base, BERT, score+Delta_M1, temp 0.7 , MLE3
+        #'/data/agirard/Projects/TimeTravel-PolicyGradientRL/models/pg_2025-03-03-11',  # T5-base, BART, Delta_M1, temp 0.7 , MLE3
+        # '/data/agirard/Projects/TimeTravel-PolicyGradientRL/models/pg_2025-02-27-09',  # Dynamic, BART, temp 0.7 , MLE3
+        #'/data/agirard/Projects/TimeTravel-PolicyGradientRL/models/pg_2025-02-17-09',  # Dynamic, BART+4, temp 1.5 , MLE3
+        # '/data/agirard/Projects/TimeTravel-PolicyGradientRL/models/pg_2025-02-12-09',  # Dynamic, BART+4, temp 1 , MLE3
+        #'/data/agirard/Projects/TimeTravel-PolicyGradientRL/models/pg_2025-02-06-17',  # Dynamic, BART+4, temp 0.7 , MLE3
+        #'/data/agirard/Projects/TimeTravel-PolicyGradientRL/models/pg_2025-02-01-15',  # Fixed, Bart+4, temp 1 , MLE3
+        #'/data/agirard/Projects/TimeTravel-PolicyGradientRL/models/pg_2025-02-02-16',  # Fixed, Bart+4, temp 0.7, MLE3
+        #'/data/agirard/Projects/TimeTravel-PolicyGradientRL/models/pg_2025-03-18-23',  # T5-base, BART, score+Delta_M1, temp 0.7, MLE1
+        '/data/agirard/Projects/TimeTravel-PolicyGradientRL/models/pg_2025-03-19-06', # T5-base, BART, score+Delta_M1, temp 0.7, MLE2
     ]
 
     # Process validation files
