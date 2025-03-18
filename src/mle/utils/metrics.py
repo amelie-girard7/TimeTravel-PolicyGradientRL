@@ -288,10 +288,16 @@ class MetricsEvaluator:
         print("Calculating BLEU scores...")
 
         # Prepare references for BLEU score calculation
-        edited_endings_refs = [[ending] for ending in all_edited_endings] if all_edited_endings else None
-        counterfactuals_refs = [[cf] for cf in all_counterfactuals]
-        initials_refs = [[init] for init in all_initials]
-        original_endings_refs = [[orig] for orig in all_original_endings]
+        # edited_endings_refs = [[ending] for ending in all_edited_endings] if all_edited_endings else None
+        # counterfactuals_refs = [[cf] for cf in all_counterfactuals]
+        # initials_refs = [[init] for init in all_initials]
+        # original_endings_refs = [[orig] for orig in all_original_endings]
+
+        # Prepare references for BLEU score calculation
+        edited_endings_refs = [all_edited_endings] if all_edited_endings else None
+        counterfactuals_refs = [all_counterfactuals]
+        initials_refs = [all_initials]
+        original_endings_refs = [all_original_endings]
 
         # List of all comparisons we want to calculate BLEU scores for
         all_comparisons = [

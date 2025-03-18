@@ -25,7 +25,6 @@ logger = logging.getLogger(__name__)
 # ==============================
 # Model Setup Functions
 # ==============================
-
 def setup_model(model_dir, file_label="", checkpoint_path=None):
     if checkpoint_path:
         logger.info(f"Loading model from checkpoint: {checkpoint_path}")
@@ -57,7 +56,6 @@ def setup_trainer(max_epochs, checkpoint_callback, wandb_logger):
 # ==============================
 # Evaluation and Metrics
 # ==============================
-
 def evaluate_and_save(model_dir, loader, best_checkpoint, file_label, best_epoch, phase):
     logger.info(f"Evaluating {phase} data for best epoch {best_epoch} using checkpoint: {best_checkpoint}")
 
@@ -114,14 +112,12 @@ def evaluate_and_save(model_dir, loader, best_checkpoint, file_label, best_epoch
 
     logger.info(f"{phase.capitalize()} evaluation metrics saved to {metrics_file}")
 
-
 def extract_epoch_from_checkpoint(checkpoint_path):
     match = re.search(r"epoch=(\d+)", checkpoint_path)
     if match:
         return int(match.group(1))
     logger.warning(f"Could not extract epoch from checkpoint path: {checkpoint_path}")
     return "Unknown"
-
 
 # ==============================
 # Main Training Function
