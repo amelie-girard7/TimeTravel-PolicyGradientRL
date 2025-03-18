@@ -1,0 +1,49 @@
+{
+  "os":  "Linux-4.18.0-477.27.1.el8_8.x86_64-x86_64-with-glibc2.28",
+  "python":  "3.11.8",
+  "startedAt":  "2025-03-11T03:03:21.911888Z",
+  "program":  "/data/agirard/Projects/TimeTravel-PolicyGradientRL/src/pg/train.py",
+  "codePath":  "src/pg/train.py",
+  "git":  {
+    "remote":  "https://github.com/amelie-girard7/TimeTravel-PolicyGradientRL.git",
+    "commit":  "3b739d2b06ba9f5e52e34d919db91894afb145fa"
+  },
+  "email":  "amelie.girard@student.uts.edu.au",
+  "root":  ".",
+  "host":  "saturn15.ihpc.uts.edu.au",
+  "username":  "agirard",
+  "executable":  "/data/agirard/anaconda3/envs/myenv/bin/python",
+  "codePathLocal":  "train.py",
+  "cpu_count":  24,
+  "cpu_count_logical":  24,
+  "gpu":  "[Tesla V100-PCIE-32GB, Tesla V100-PCIE-32GB]",
+  "gpu_count":  2,
+  "disk":  {
+    "/":  {
+      "total":  "1166903869440",
+      "used":  "858625552384"
+    }
+  },
+  "memory":  {
+    "total":  "201361469440"
+  },
+  "cpu":  {
+    "count":  24,
+    "countLogical":  24
+  },
+  "gpu_nvidia":  [
+    {
+      "name":  "Tesla V100-PCIE-32GB",
+      "memoryTotal":  "34359738368",
+      "cudaCores":  5120,
+      "architecture":  "Volta"
+    },
+    {
+      "name":  "Tesla V100-PCIE-32GB",
+      "memoryTotal":  "34359738368",
+      "cudaCores":  5120,
+      "architecture":  "Volta"
+    }
+  ],
+  "cudaVersion":  "12.4"
+}

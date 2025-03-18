@@ -38,7 +38,6 @@ def setup_model(model_dir, file_label="", checkpoint_path=None):
 
     return model
 
-
 # Sets up the PyTorch Lightning Trainer with W&B logger and checkpointing
 def setup_trainer(max_epochs, checkpoint_callback, early_stop_callback, wandb_logger):
     trainer = Trainer(
@@ -53,63 +52,6 @@ def setup_trainer(max_epochs, checkpoint_callback, early_stop_callback, wandb_lo
     )
     logger.info(f"Trainer setup complete for {max_epochs} epochs.")
     return trainer
-
-
-# Evaluate and save metrics after testing/validation
-# def evaluate_and_save(model_dir, loader, best_checkpoint, file_label, best_epoch, phase):
-#     logger.info(f"Evaluating {phase} data for best epoch {best_epoch} using checkpoint: {best_checkpoint}")
-#     model = setup_model(model_dir, file_label=file_label, checkpoint_path=best_checkpoint)
-#     trainer = Trainer(accelerator='gpu', devices=1)
-
-#     # Running evaluation
-#     if phase == "test":
-#         trainer.test(model, loader, verbose=False)
-#     elif phase == "validation":
-#         trainer.validate(model, loader, verbose=False)
-#     else:
-#         raise ValueError(f"Unknown phase: {phase}")
-
-#     details_file = os.path.join(model_dir, f"{phase}_details{file_label}.csv")
-#     if not os.path.exists(details_file):
-#         logger.error(f"{phase.capitalize()} details file not found at {details_file}")
-#         raise FileNotFoundError(f"{phase.capitalize()} details file not found at {details_file}")
-
-#     details_df = pd.read_csv(details_file)
-#     filtered_details = details_df[details_df['Epoch'] == best_epoch]
-#     if filtered_details.empty:
-#         logger.warning(f"No rows found for epoch {best_epoch} in {phase}_details_df. Evaluating all rows instead.")
-#         filtered_details = details_df
-
-#     generated_texts = filtered_details['Generated Text'].tolist()
-#     edited_endings = filtered_details['Edited Ending'].tolist()
-#     counterfactuals = filtered_details['Counterfactual'].tolist()
-#     initials = filtered_details['Initial'].tolist()
-#     premises = filtered_details['Premise'].tolist()
-#     original_endings = filtered_details['Original Ending'].tolist()
-
-#     if not (generated_texts and edited_endings):
-#         logger.error(f"Generated texts or edited endings are empty. Skipping metric calculations for {phase}.")
-#         return
-
-#     evaluator = MetricsEvaluator()
-#     metrics = {}
-
-#     try:
-#         metrics.update(evaluator.calculate_and_log_bart_similarity(generated_texts, edited_endings, counterfactuals, initials, premises, original_endings, logger))
-#         metrics.update(evaluator.calculate_and_log_bert_similarity(generated_texts, edited_endings, counterfactuals, initials, premises, original_endings, logger))
-#         metrics.update(evaluator.calculate_and_log_bleu_scores(generated_texts, edited_endings, counterfactuals, initials, premises, original_endings, logger))
-#         metrics.update(evaluator.calculate_and_log_rouge_scores(generated_texts, edited_endings, counterfactuals, initials, premises, original_endings, logger))
-#     except Exception as e:
-#         logger.error(f"Error calculating metrics for {phase}: {e}")
-
-#     metrics_file = os.path.join(model_dir, f"{phase}_metrics_epoch_{best_epoch}{file_label}.csv")
-#     metrics_df = pd.DataFrame.from_dict(metrics, orient='index', columns=['Score'])
-#     metrics_df.reset_index(inplace=True)
-#     metrics_df.columns = ['Metric', 'Score']
-#     metrics_df.to_csv(metrics_file, index=False)
-
-#     logger.info(f"{phase.capitalize()} evaluation metrics saved to {metrics_file}")
-
 
 # Extract the epoch number from the checkpoint filename
 def extract_epoch_from_checkpoint(checkpoint_path):
