@@ -1,1 +1,0 @@
-{"validation_pg_baseline":0,"_timestamp":1.741652913214936e+09,"training_pg_loss_epoch":-10.32121753692627,"_step":5,"_wandb":{"runtime":132},"trainer/global_step":2,"validation_pg_loss":-4.79191780090332,"_runtime":98.711539609,"validation_pg_reward_mean":-2.5834405422210693,"training_pg_reward_mean_epoch":-1.7914845943450928,"training_pg_baseline_epoch":0,"epoch":2}

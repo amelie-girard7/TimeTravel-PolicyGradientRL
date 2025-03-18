@@ -50,7 +50,7 @@ CONFIG = {
     # MLE Training
     "mle_from_checkpoint": False,   # Set to True to resume training from the specified mle_checkpoint_path; False starts training from scratch.
     "mle_checkpoint_path": None,  
-    "mle_epochs": 3,  # Number of epochs to train with MLE
+    "mle_epochs": 6,  # Number of epochs to train with MLE
 
     # Additional training options
     "use_custom_loss": False,  # Whether to use a custom loss function (set to False for MLE)
