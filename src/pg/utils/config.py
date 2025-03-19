@@ -17,9 +17,9 @@ CONFIG = {
 
     # ******** Data files***********
     # Sample Timetravel sample datasets
-    "train_file": "train_supervised_small.json",
-    "dev_file": "dev_data.json",
-    "test_file": "test_data.json",
+    "train_file": "train_supervised_small_sample.json",
+    "dev_file": "dev_data_sample.json",
+    "test_file": "test_data_sample.json",
 
     # Timetravel,AblatedTimeTravel datasets
     #"train_file": "train_supervised_small.json",
@@ -50,28 +50,47 @@ CONFIG = {
     # Additional training options
     "use_custom_loss": False,  # Whether to use a custom loss function (set to False for MLE)
     "output_attentions": False,  # Set to True to output attentions from the model (optional)
-
-
-    # PG Training
-    # "pg_from_checkpoint": True,
-    # "pg_checkpoint_path": "/data/agirard/Projects/TimeTravel-PolicyGradientRL/models/mle_2025-03-18-12/checkpoint-epoch=00-val_loss=1.00.ckpt",   # MLE1_TT
-    # "pg_epochs": 5,  # Number of epochs to fine-tune with PG
-
-    "pg_from_checkpoint": True,
-    "pg_checkpoint_path": "/data/agirard/Projects/TimeTravel-PolicyGradientRL/models/mle_2025-03-18-13/checkpoint-epoch=01-val_loss=0.98.ckpt",   # MLE2_TT
-    "pg_epochs": 4,  # Number of epochs to fine-tune with PG
-
-    # New configuration for PG objective modifications
-    "objective_clipping": True,  # If True, apply max(0, objective) to rewards
-    "use_greedy_reward": True,  # If True, compute reward using greedy decoding (num_beams=1, do_sample=False)
-
     # Additional configuration for scoring metrics
-    "reward_metric": "rouge",   # "rouge","bart", "bert","bleu" (default to "rouge")
+    "reward_metric": "rouge",  # "rouge","bart", "bert","bleu" (default to "rouge")
 
     # **Experiment Selection**
-    "pg_experiment": "delta_m1",  # Options: "fixed", "dynamic", "delta_m1"
-    "delta_m1_enabled": True,  # Enable Delta_M1 reward adjustments
+    "pg_experiment": "dynamic",  # Options: "fixed", "dynamic", "delta_m1"
+    "delta_m1_enabled": False,  # Enable Delta_M1 reward adjustments
     "baseline_score": 0.5,  # Used for PG fixed baseline experiment
+
+    # PG Training
+    "pg_from_checkpoint": True,
+    "pg_checkpoint_path": "/data/agirard/Projects/TimeTravel-PolicyGradientRL/models/mle_2025-03-18-12/checkpoint-epoch=00-val_loss=1.00.ckpt",   # MLE1_TT
+    "pg_epochs": 5,  # Number of epochs to fine-tune with PG
+
+    # "pg_from_checkpoint": True,
+    # "pg_checkpoint_path": "/data/agirard/Projects/TimeTravel-PolicyGradientRL/models/mle_2025-03-18-13/checkpoint-epoch=01-val_loss=0.98.ckpt",   # MLE2_TT
+    # "pg_epochs": 4,  # Number of epochs to fine-tune with PG
+
+    # New configuration for PG objective modifications:
+    # "objective_clipping": False,  # Disable reward clipping (keep raw rewards as computed)
+    # "use_greedy_reward": False,   # Disable greedy decoding (use the sampled outputs as before)
+
+    # Try #1 – Objective Clipping Only:
+    #   - Enables objective clipping: rewards are set to max(0, reward) so they are never negative.
+    #   - Disables greedy decoding: rewards are computed on the original (sampled) outputs.
+    # "objective_clipping": True,  # Enable clipping of rewards to be non-negative
+    # "use_greedy_reward": False,  # Disable greedy decoding for reward calculation
+
+    # Try #2 – Greedy Decoding for Reward Calculation Only:
+    #   - Disables objective clipping: rewards remain as computed (could be negative).
+    #   - Enables greedy decoding: rewards are computed using a single, deterministically generated output.
+    "objective_clipping": False,  # Disable reward clipping
+    "use_greedy_reward": True,    # Enable greedy decoding for reward calculation
+
+    # Try #3 – Combination of Both:
+    #   - Enables objective clipping: ensures non-negative rewards.
+    #   - Enables greedy decoding: uses a single, best output to compute the reward.
+    # "objective_clipping": True,   # Enable reward clipping
+    # "use_greedy_reward": True,    # Enable greedy decoding for reward calculation
+
+
+
 
   
     # Additional configuration for scoring metrics 

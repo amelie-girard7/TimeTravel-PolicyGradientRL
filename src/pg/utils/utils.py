@@ -38,22 +38,21 @@ def load_first_line_from_json(file_path):
         raise IOError(f"Error reading from {file_path}: {e}")
 
 def calculate_differential_weights(tokenized_labels, tokenizer, differences, high_weight=1, base_weight=1):
-        """
-        Calculate differential weights for tokenized labels (edited endings) based on diff
-        erences.
-        """
-        # Initialize differential weights with base_weight
-        differential_weights = torch.full(tokenized_labels.shape, fill_value=base_weight, dtype=torch.float)
+    """
+    Calculate differential weights for tokenized labels (edited endings) based on differences.
+     """
+    # Initialize differential weights with base_weight
+    differential_weights = torch.full(tokenized_labels.shape, fill_value=base_weight, dtype=torch.float)
         
-        # Flatten the list of differences for easy checking
-        difference_tokens_ids = set([item for sublist in [tokenizer.encode(diff, add_special_tokens=False) for diff in differences] for item in sublist])
+    # Flatten the list of differences for easy checking
+    difference_tokens_ids = set([item for sublist in [tokenizer.encode(diff, add_special_tokens=False) for diff in differences] for item in sublist])
         
-        # Adjust weights for tokens present in differences
-        for i, token_id in enumerate(tokenized_labels.squeeze().tolist()):
-            if token_id in difference_tokens_ids:
-                differential_weights[i] = high_weight
+    # Adjust weights for tokens present in differences
+    for i, token_id in enumerate(tokenized_labels.squeeze().tolist()):
+        if token_id in difference_tokens_ids:
+            differential_weights[i] = high_weight
         
-        return differential_weights    
+    return differential_weights
 
 def preprocess_data(row, tokenizer):
     """

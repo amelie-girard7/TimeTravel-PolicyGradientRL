@@ -124,9 +124,34 @@ class FlanT5FineTuner(pl.LightningModule):
         edited_endings = [str(ee) for ee in batch['edited_ending']]
         original_endings = [str(oe) for oe in batch['original_ending']]
 
+        # --- NEW CODE START: Use greedy decoding for reward if enabled (Try #2) ---
+        if CONFIG.get("use_greedy_reward", False):
+            greedy_outputs = self.model.generate(
+                input_ids=input_ids,
+                attention_mask=attention_mask,
+                max_length=CONFIG['max_gen_length'],
+                num_beams=1,
+                do_sample=False,
+                output_scores=True,
+                return_dict_in_generate=True
+            )
+            # Extract token IDs from the generated output
+            greedy_token_ids = greedy_outputs.sequences  # This should be a tensor of token IDs
+            print(f"greedy_outputs: {greedy_outputs}")
+            print(f"greedy_token_ids shape: {greedy_token_ids.shape}")
+            print(f"greedy_token_ids: {greedy_token_ids}")
+            greedy_texts = self.tokenizer.batch_decode(greedy_token_ids, skip_special_tokens=True)
+            score_pred_edited = self.metrics_evaluator.calculate_score(greedy_texts, edited_endings).detach()
+            score_pred_original = self.metrics_evaluator.calculate_score(greedy_texts, original_endings).detach()
+        else:
+            # Use the sampled outputs as before
+            score_pred_edited = self.metrics_evaluator.calculate_score(generated_texts, edited_endings).detach()
+            score_pred_original = self.metrics_evaluator.calculate_score(generated_texts, original_endings).detach()
+        # --- NEW CODE END ---
+
         # Calculate rewards
-        score_pred_edited = self.metrics_evaluator.calculate_score(generated_texts, edited_endings).detach()
-        score_pred_original = self.metrics_evaluator.calculate_score(generated_texts, original_endings).detach()
+        # score_pred_edited = self.metrics_evaluator.calculate_score(generated_texts, edited_endings).detach()
+        # score_pred_original = self.metrics_evaluator.calculate_score(generated_texts, original_endings).detach()
 
         if CONFIG["pg_experiment"] == "fixed":
             rewards = score_pred_edited - CONFIG["baseline_score"]
@@ -145,6 +170,12 @@ class FlanT5FineTuner(pl.LightningModule):
 
         else:
             raise ValueError(f"Invalid PG experiment: {CONFIG['pg_experiment']}")
+
+        # --- NEW CODE START: Apply objective clipping if enabled (Try #1) ---
+        if CONFIG.get("objective_clipping", False):
+            # Ensure rewards are non-negative by clipping them at 0
+            rewards = torch.clamp(rewards, min=0.0)
+        # --- NEW CODE END ---
 
             # Calculate PG loss
         pg_loss = self.calculate_policy_gradient_loss(generated_tokens, logits, rewards, baseline=dynamic_baseline)
@@ -185,9 +216,33 @@ class FlanT5FineTuner(pl.LightningModule):
         edited_endings = [str(ee) for ee in batch['edited_ending']]
         original_endings = [str(oe) for oe in batch['original_ending']]
 
+        # --- NEW CODE START: Use greedy decoding for reward if enabled (Try #2) ---
+        if CONFIG.get("use_greedy_reward", False):
+            greedy_outputs = self.model.generate(
+                input_ids=input_ids,
+                attention_mask=attention_mask,
+                max_length=CONFIG['max_gen_length'],
+                num_beams=1,
+                do_sample=False,
+                output_scores=True,
+                return_dict_in_generate=True
+            )
+            # Extract token IDs from the generated output
+            greedy_token_ids = greedy_outputs.sequences  # This should be a tensor of token IDs
+            print(f"greedy_outputs: {greedy_outputs}")
+            print(f"greedy_token_ids shape: {greedy_token_ids.shape}")
+            print(f"greedy_token_ids: {greedy_token_ids}")
+            greedy_texts = self.tokenizer.batch_decode(greedy_token_ids, skip_special_tokens=True)
+            score_pred_edited = self.metrics_evaluator.calculate_score(greedy_texts, edited_endings).detach()
+            score_pred_original = self.metrics_evaluator.calculate_score(greedy_texts, original_endings).detach()
+        else:
+            score_pred_edited = self.metrics_evaluator.calculate_score(generated_texts, edited_endings).detach()
+            score_pred_original = self.metrics_evaluator.calculate_score(generated_texts, original_endings).detach()
+        # --- NEW CODE END ---
+
         # Calculate scores
-        score_pred_edited = self.metrics_evaluator.calculate_score(generated_texts, edited_endings).detach()
-        score_pred_original = self.metrics_evaluator.calculate_score(generated_texts, original_endings).detach()
+        # score_pred_edited = self.metrics_evaluator.calculate_score(generated_texts, edited_endings).detach()
+        # score_pred_original = self.metrics_evaluator.calculate_score(generated_texts, original_endings).detach()
 
         # Handle the different experiments
         if CONFIG["pg_experiment"] == "fixed":
@@ -233,6 +288,12 @@ class FlanT5FineTuner(pl.LightningModule):
         logger.info(
             f'[VALIDATION] Epoch {self.current_epoch} | PG Loss: {pg_val_loss}, ΔM1 Mean: {delta_m1.mean().item() if CONFIG["pg_experiment"] == "delta_m1" else "N/A"}')
 
+        # --- NEW CODE START: Apply objective clipping if enabled (Try #1) ---
+        if CONFIG.get("objective_clipping", False):
+            # Ensure rewards are non-negative by clipping them at 0
+            rewards = torch.clamp(rewards, min=0.0)
+        # --- NEW CODE END ---
+
         return pg_val_loss
 
     def on_validation_epoch_end(self):
@@ -261,9 +322,30 @@ class FlanT5FineTuner(pl.LightningModule):
         edited_endings = [str(ee) for ee in batch['edited_ending']]
         original_endings = [str(oe) for oe in batch['original_ending']]
 
+        # --- NEW CODE START: Use greedy decoding for reward if enabled (Try #2) ---
+        if CONFIG.get("use_greedy_reward", False):
+            greedy_outputs = self.model.generate(
+                input_ids=input_ids,
+                attention_mask=attention_mask,
+                max_length=CONFIG['max_gen_length'],
+                num_beams=1,
+                do_sample=False,
+                output_scores=True,
+                return_dict_in_generate=True
+            )
+            # Extract token IDs from the generated output
+            greedy_token_ids = greedy_outputs.sequences  # This should be a tensor of token IDs
+            greedy_texts = self.tokenizer.batch_decode(greedy_token_ids, skip_special_tokens=True)
+            score_pred_edited = self.metrics_evaluator.calculate_score(greedy_texts, edited_endings).detach()
+            score_pred_original = self.metrics_evaluator.calculate_score(greedy_texts, original_endings).detach()
+        else:
+            score_pred_edited = self.metrics_evaluator.calculate_score(generated_texts, edited_endings).detach()
+            score_pred_original = self.metrics_evaluator.calculate_score(generated_texts, original_endings).detach()
+        # --- NEW CODE END ---
+
         # Compute scores
-        score_pred_edited = self.metrics_evaluator.calculate_score(generated_texts, edited_endings).detach()
-        score_pred_original = self.metrics_evaluator.calculate_score(generated_texts, original_endings).detach()
+        # score_pred_edited = self.metrics_evaluator.calculate_score(generated_texts, edited_endings).detach()
+        # score_pred_original = self.metrics_evaluator.calculate_score(generated_texts, original_endings).detach()
 
         # Handle the different experiments
         if CONFIG["pg_experiment"] == "fixed":
@@ -282,6 +364,11 @@ class FlanT5FineTuner(pl.LightningModule):
 
         else:
             raise ValueError(f"Invalid PG experiment: {CONFIG['pg_experiment']}")
+
+        # --- NEW CODE START: Apply objective clipping if enabled (Try #1) ---
+        if CONFIG.get("objective_clipping", False):
+            rewards = torch.clamp(rewards, min=0.0)
+        # --- NEW CODE END ---
 
         # Compute PG test loss (baseline = 0.0, since no updates occur)
         pg_test_loss = self.calculate_policy_gradient_loss(generated_tokens, logits, rewards, baseline=0.0)
