@@ -102,8 +102,10 @@ def main():
         #'/data/agirard/Projects/TimeTravel-PolicyGradientRL/models/pg_2025-02-06-17',  # Dynamic, BART+4, temp 0.7 , MLE3
         #'/data/agirard/Projects/TimeTravel-PolicyGradientRL/models/pg_2025-02-01-15',  # Fixed, Bart+4, temp 1 , MLE3
         #'/data/agirard/Projects/TimeTravel-PolicyGradientRL/models/pg_2025-02-02-16',  # Fixed, Bart+4, temp 0.7, MLE3
-        #'/data/agirard/Projects/TimeTravel-PolicyGradientRL/models/pg_2025-03-18-23',  # T5-base, BART, score+Delta_M1, temp 0.7, MLE1
-        '/data/agirard/Projects/TimeTravel-PolicyGradientRL/models/pg_2025-03-19-06', # T5-base, BART, score+Delta_M1, temp 0.7, MLE2
+        #'/data/agirard/Projects/TimeTravel-PolicyGradientRL/models/pg_2025-03-18-23',  # T5-base, ROUGE, score+Delta_M1, temp 0.7, MLE1
+        #'/data/agirard/Projects/TimeTravel-PolicyGradientRL/models/pg_2025-03-19-06', # T5-base, ROUGE, score+Delta_M1, temp 0.7, MLE2
+        #'/data/agirard/Projects/TimeTravel-PolicyGradientRL/models/pg_2025-03-19-10', # T5-base, BART, score+Delta_M1, temp 0.7, MLE1
+        '/data/agirard/Projects/TimeTravel-PolicyGradientRL/models/pg_2025-03-19-16',  #T5-base, Bleu, score+Delta_M1, temp 0.7, MLE1
     ]
 
     # Process validation files
