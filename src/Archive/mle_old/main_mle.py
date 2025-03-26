@@ -15,7 +15,7 @@ import pandas as pd
 import re
 
 # Add project root to Python path
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "../..")))
 
 # Set up logging configuration
 logging.basicConfig(level=logging.INFO)
