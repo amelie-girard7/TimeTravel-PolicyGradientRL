@@ -105,7 +105,18 @@ def main():
         #'/data/agirard/Projects/TimeTravel-PolicyGradientRL/models/pg_2025-03-18-23',  # T5-base, ROUGE, score+Delta_M1, temp 0.7, MLE1
         #'/data/agirard/Projects/TimeTravel-PolicyGradientRL/models/pg_2025-03-19-06', # T5-base, ROUGE, score+Delta_M1, temp 0.7, MLE2
         #'/data/agirard/Projects/TimeTravel-PolicyGradientRL/models/pg_2025-03-19-10', # T5-base, BART, score+Delta_M1, temp 0.7, MLE1
-        '/data/agirard/Projects/TimeTravel-PolicyGradientRL/models/pg_2025-03-19-16',  #T5-base, Bleu, score+Delta_M1, temp 0.7, MLE1
+        #'/data/agirard/Projects/TimeTravel-PolicyGradientRL/models/pg_2025-03-19-16',  #T5-base, Bleu, score+Delta_M1, temp 0.7, MLE1
+        #'/data/agirard/Projects/TimeTravel-PolicyGradientRL/models/pg_2025-03-19-21', # T5-base, Rouge, dynamic, temp 0.7, MLE1 - Clipping
+        #'/data/agirard/Projects/TimeTravel-PolicyGradientRL/models/pg_2025-03-20-06', # T5-base, BART, dynamic, temp 0.7, MLE1 - Clipping
+        #'/data/agirard/Projects/TimeTravel-PolicyGradientRL/models/pg_2025-03-20-09', # T5-base, Rouge, dynamic,  temp 0.7, MLE1 - Greedy
+        #'/data/agirard/Projects/TimeTravel-PolicyGradientRL/models/pg_2025-03-23-16', # T5-base, BART, dynamic, MLE1 - Greedy
+        #'/data/agirard/Projects/TimeTravel-PolicyGradientRL/models/pg_2025-03-20-20', # T5-base, BART, dynamic,  temp 0.7, MLE1 - Greedy
+        #'/data/agirard/Projects/TimeTravel-PolicyGradientRL/models/pg_2025-03-24-13',# T5-base, BART, dynamic,  temp 0.7, MLE2 - score+Delta_M1
+        #'/data/agirard/Projects/TimeTravel-PolicyGradientRL/models/pg_2025-03-24-21', # T5-base, BERT, dynamic,  temp 0.7, MLE1 - clipping
+        #'/data/agirard/Projects/TimeTravel-PolicyGradientRL/models/pg_2025-03-25-11', # T5-base, BERT, dynamic,  temp 0.7, MLE2 - clipping
+        '/data/agirard/Projects/TimeTravel-PolicyGradientRL/models/pg_2025-03-25-14', # T5-base, BERT, dynamic, MLE1 - Greedy
+        
+
     ]
 
     # Process validation files

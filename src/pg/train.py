@@ -22,6 +22,7 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+
 # Initialize or load the model from a checkpoint
 def setup_model(model_dir, file_label="", checkpoint_path=None):
     if checkpoint_path:
@@ -38,6 +39,7 @@ def setup_model(model_dir, file_label="", checkpoint_path=None):
 
     return model
 
+
 # Sets up the PyTorch Lightning Trainer with W&B logger and checkpointing
 def setup_trainer(max_epochs, checkpoint_callback, early_stop_callback, wandb_logger):
     trainer = Trainer(
@@ -52,6 +54,7 @@ def setup_trainer(max_epochs, checkpoint_callback, early_stop_callback, wandb_lo
     )
     logger.info(f"Trainer setup complete for {max_epochs} epochs.")
     return trainer
+
 
 # Extract the epoch number from the checkpoint filename
 def extract_epoch_from_checkpoint(checkpoint_path):
@@ -84,7 +87,8 @@ def main():
         CONFIG["num_workers"],
     )
 
-    train_key, dev_key, test_key = CONFIG["train_file"].split('.')[0], CONFIG["dev_file"].split('.')[0], CONFIG["test_file"].split('.')[0]
+    train_key, dev_key, test_key = CONFIG["train_file"].split('.')[0], CONFIG["dev_file"].split('.')[0], \
+    CONFIG["test_file"].split('.')[0]
 
     # PG Phase
     model = setup_model(
@@ -104,16 +108,15 @@ def main():
     # Early stopping callback to stop training when the validation loss stops improving
     early_stop_callback = EarlyStopping(
         monitor='validation_pg_loss',  # Monitor the validation loss metric
-        min_delta=0.00,                # Minimum change in the monitored metric to qualify as an improvement
-        patience=2,                    # Number of epochs to wait without improvement before stopping training
-        verbose=True,                  # Print messages when early stopping is triggered
-        mode='min'                     # We expect the monitored metric to decrease; training stops when it stops decreasing
-    )   
-
+        min_delta=0.00,  # Minimum change in the monitored metric to qualify as an improvement
+        patience=2,  # Number of epochs to wait without improvement before stopping training
+        verbose=True,  # Print messages when early stopping is triggered
+        mode='min'  # We expect the monitored metric to decrease; training stops when it stops decreasing
+    )
 
     # trainer = setup_trainer(CONFIG["pg_epochs"], pg_checkpoint_callback, wandb_logger)
     trainer = setup_trainer(CONFIG["pg_epochs"], pg_checkpoint_callback, early_stop_callback, wandb_logger)
- 
+
     trainer.fit(model, dataloaders[train_key], dataloaders[dev_key])
 
     best_checkpoint = pg_checkpoint_callback.best_model_path
@@ -125,10 +128,8 @@ def main():
     # Explicitly set up Trainer without logging for final evaluation
     trainer = Trainer(accelerator='gpu', devices=1, logger=False)
 
-
     # Run explicit validation pass to collect and log details
     trainer.validate(model, dataloaders[dev_key], verbose=False)
-
 
     # evaluate_and_save(
     #     model_dir=model_dir,

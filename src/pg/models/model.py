@@ -54,12 +54,19 @@ class FlanT5FineTuner(pl.LightningModule):
         self.metrics_evaluator = MetricsEvaluator()
 
     def forward(self, input_ids, attention_mask):
+        # Determine whether to use greedy decoding or sampling
+        do_sample = not CONFIG.get("use_greedy_reward", False)  # Use sampling if use_greedy_reward is False
+        num_beams = 1 if CONFIG.get("use_greedy_reward", False) else 1  # Use greedy decoding if use_greedy_reward is True
+        temperature = CONFIG.get("temperature", 0.7)
+
         outputs = self.model.generate(
             input_ids=input_ids,
             attention_mask=attention_mask,
             max_length=CONFIG['max_gen_length'],
-            do_sample=True, 
-            temperature=0.7,
+            do_sample=do_sample,  # Enable sampling or greedy decoding
+            num_beams=num_beams,  # Use greedy decoding (num_beams=1) or sampling (num_beams=1)
+            # temperature=0.7 if do_sample else None,  # Temperature only applies to sampling
+            temperature=temperature if do_sample else None,  # Temperature only applies to sampling
             output_scores=True,
             return_dict_in_generate=True
         )
@@ -109,7 +116,7 @@ class FlanT5FineTuner(pl.LightningModule):
         sequence_log_prob_sum = token_log_probs.sum(dim=1)
 
         # Handle special case for BART (negative rewards)
-        #if CONFIG.get("reward_metric") == "bart":
+        # if CONFIG.get("reward_metric") == "bart":
         #   rewards = rewards + 4  # add a Baseline to move to the positif size but you keep the magnitude
         return -(rewards * sequence_log_prob_sum).mean()
 
@@ -124,34 +131,8 @@ class FlanT5FineTuner(pl.LightningModule):
         edited_endings = [str(ee) for ee in batch['edited_ending']]
         original_endings = [str(oe) for oe in batch['original_ending']]
 
-        # --- NEW CODE START: Use greedy decoding for reward if enabled (Try #2) ---
-        if CONFIG.get("use_greedy_reward", False):
-            greedy_outputs = self.model.generate(
-                input_ids=input_ids,
-                attention_mask=attention_mask,
-                max_length=CONFIG['max_gen_length'],
-                num_beams=1,
-                do_sample=False,
-                output_scores=True,
-                return_dict_in_generate=True
-            )
-            # Extract token IDs from the generated output
-            greedy_token_ids = greedy_outputs.sequences  # This should be a tensor of token IDs
-            print(f"greedy_outputs: {greedy_outputs}")
-            print(f"greedy_token_ids shape: {greedy_token_ids.shape}")
-            print(f"greedy_token_ids: {greedy_token_ids}")
-            greedy_texts = self.tokenizer.batch_decode(greedy_token_ids, skip_special_tokens=True)
-            score_pred_edited = self.metrics_evaluator.calculate_score(greedy_texts, edited_endings).detach()
-            score_pred_original = self.metrics_evaluator.calculate_score(greedy_texts, original_endings).detach()
-        else:
-            # Use the sampled outputs as before
-            score_pred_edited = self.metrics_evaluator.calculate_score(generated_texts, edited_endings).detach()
-            score_pred_original = self.metrics_evaluator.calculate_score(generated_texts, original_endings).detach()
-        # --- NEW CODE END ---
-
-        # Calculate rewards
-        # score_pred_edited = self.metrics_evaluator.calculate_score(generated_texts, edited_endings).detach()
-        # score_pred_original = self.metrics_evaluator.calculate_score(generated_texts, original_endings).detach()
+        score_pred_edited = self.metrics_evaluator.calculate_score(generated_texts, edited_endings).detach()
+        score_pred_original = self.metrics_evaluator.calculate_score(generated_texts, original_endings).detach()
 
         if CONFIG["pg_experiment"] == "fixed":
             rewards = score_pred_edited - CONFIG["baseline_score"]
@@ -164,7 +145,7 @@ class FlanT5FineTuner(pl.LightningModule):
         elif CONFIG["pg_experiment"] == "delta_m1":
             delta_m1 = score_pred_edited - score_pred_original
             rewards = score_pred_edited + delta_m1
-            #rewards = delta_m1
+            # rewards = delta_m1
             dynamic_baseline = rewards.mean().detach()
             rewards = rewards - dynamic_baseline
 
@@ -177,7 +158,7 @@ class FlanT5FineTuner(pl.LightningModule):
             rewards = torch.clamp(rewards, min=0.0)
         # --- NEW CODE END ---
 
-            # Calculate PG loss
+        # Calculate PG loss
         pg_loss = self.calculate_policy_gradient_loss(generated_tokens, logits, rewards, baseline=dynamic_baseline)
 
         # Logging
@@ -216,33 +197,9 @@ class FlanT5FineTuner(pl.LightningModule):
         edited_endings = [str(ee) for ee in batch['edited_ending']]
         original_endings = [str(oe) for oe in batch['original_ending']]
 
-        # --- NEW CODE START: Use greedy decoding for reward if enabled (Try #2) ---
-        if CONFIG.get("use_greedy_reward", False):
-            greedy_outputs = self.model.generate(
-                input_ids=input_ids,
-                attention_mask=attention_mask,
-                max_length=CONFIG['max_gen_length'],
-                num_beams=1,
-                do_sample=False,
-                output_scores=True,
-                return_dict_in_generate=True
-            )
-            # Extract token IDs from the generated output
-            greedy_token_ids = greedy_outputs.sequences  # This should be a tensor of token IDs
-            print(f"greedy_outputs: {greedy_outputs}")
-            print(f"greedy_token_ids shape: {greedy_token_ids.shape}")
-            print(f"greedy_token_ids: {greedy_token_ids}")
-            greedy_texts = self.tokenizer.batch_decode(greedy_token_ids, skip_special_tokens=True)
-            score_pred_edited = self.metrics_evaluator.calculate_score(greedy_texts, edited_endings).detach()
-            score_pred_original = self.metrics_evaluator.calculate_score(greedy_texts, original_endings).detach()
-        else:
-            score_pred_edited = self.metrics_evaluator.calculate_score(generated_texts, edited_endings).detach()
-            score_pred_original = self.metrics_evaluator.calculate_score(generated_texts, original_endings).detach()
-        # --- NEW CODE END ---
-
         # Calculate scores
-        # score_pred_edited = self.metrics_evaluator.calculate_score(generated_texts, edited_endings).detach()
-        # score_pred_original = self.metrics_evaluator.calculate_score(generated_texts, original_endings).detach()
+        score_pred_edited = self.metrics_evaluator.calculate_score(generated_texts, edited_endings).detach()
+        score_pred_original = self.metrics_evaluator.calculate_score(generated_texts, original_endings).detach()
 
         # Handle the different experiments
         if CONFIG["pg_experiment"] == "fixed":
@@ -255,8 +212,8 @@ class FlanT5FineTuner(pl.LightningModule):
 
         elif CONFIG["pg_experiment"] == "delta_m1":
             delta_m1 = score_pred_edited - score_pred_original
-            #rewards = score_pred_edited + delta_m1
-            rewards = delta_m1
+            rewards = score_pred_edited + delta_m1
+            #rewards = delta_m1
             dynamic_baseline = rewards.mean().detach()
 
         else:
@@ -273,10 +230,10 @@ class FlanT5FineTuner(pl.LightningModule):
         if CONFIG["pg_experiment"] == "delta_m1":
             self.log('validation_pg_delta_m1_mean', delta_m1.mean().item(), on_epoch=True, prog_bar=True, logger=True)
 
-        #Save validation details
+        # Save validation details
         for i in range(len(generated_texts)):
             self.epoch_validation_details.append({
-                #'Epoch': self.current_epoch,
+                # 'Epoch': self.current_epoch,
                 'Premise': batch['premise'][i],
                 'Initial': batch['initial'][i],
                 'Counterfactual': batch['counterfactual'][i],
@@ -301,9 +258,9 @@ class FlanT5FineTuner(pl.LightningModule):
         Finalize and save validation results at the end of the validation epoch.
         """
         print("Validation Epoch End")
-        #if self.epoch_validation_details:
-            # print(f"Saving {len(self.epoch_validation_details)} validation details to {self.val_csv_file_path}.")
-            # self.log_to_csv(self.val_csv_file_path, self.epoch_validation_details, epoch=self.current_epoch)
+        # if self.epoch_validation_details:
+        # print(f"Saving {len(self.epoch_validation_details)} validation details to {self.val_csv_file_path}.")
+        # self.log_to_csv(self.val_csv_file_path, self.epoch_validation_details, epoch=self.current_epoch)
 
         # if self.epoch_scores:
         #     overall_val_score = torch.tensor(self.epoch_scores).mean().item()
@@ -311,8 +268,8 @@ class FlanT5FineTuner(pl.LightningModule):
         #     self.log("overall_score", overall_val_score, prog_bar=True, logger=True)
 
         # Clear buffers for next validation run
-        #self.epoch_validation_details.clear()
-        #self.epoch_scores.clear()
+        # self.epoch_validation_details.clear()
+        # self.epoch_scores.clear()
 
     def test_step(self, batch, batch_idx):
         input_ids, attention_mask, labels = batch['input_ids'], batch['attention_mask'], batch['labels']
@@ -322,30 +279,9 @@ class FlanT5FineTuner(pl.LightningModule):
         edited_endings = [str(ee) for ee in batch['edited_ending']]
         original_endings = [str(oe) for oe in batch['original_ending']]
 
-        # --- NEW CODE START: Use greedy decoding for reward if enabled (Try #2) ---
-        if CONFIG.get("use_greedy_reward", False):
-            greedy_outputs = self.model.generate(
-                input_ids=input_ids,
-                attention_mask=attention_mask,
-                max_length=CONFIG['max_gen_length'],
-                num_beams=1,
-                do_sample=False,
-                output_scores=True,
-                return_dict_in_generate=True
-            )
-            # Extract token IDs from the generated output
-            greedy_token_ids = greedy_outputs.sequences  # This should be a tensor of token IDs
-            greedy_texts = self.tokenizer.batch_decode(greedy_token_ids, skip_special_tokens=True)
-            score_pred_edited = self.metrics_evaluator.calculate_score(greedy_texts, edited_endings).detach()
-            score_pred_original = self.metrics_evaluator.calculate_score(greedy_texts, original_endings).detach()
-        else:
-            score_pred_edited = self.metrics_evaluator.calculate_score(generated_texts, edited_endings).detach()
-            score_pred_original = self.metrics_evaluator.calculate_score(generated_texts, original_endings).detach()
-        # --- NEW CODE END ---
-
         # Compute scores
-        # score_pred_edited = self.metrics_evaluator.calculate_score(generated_texts, edited_endings).detach()
-        # score_pred_original = self.metrics_evaluator.calculate_score(generated_texts, original_endings).detach()
+        score_pred_edited = self.metrics_evaluator.calculate_score(generated_texts, edited_endings).detach()
+        score_pred_original = self.metrics_evaluator.calculate_score(generated_texts, original_endings).detach()
 
         # Handle the different experiments
         if CONFIG["pg_experiment"] == "fixed":
@@ -359,7 +295,7 @@ class FlanT5FineTuner(pl.LightningModule):
         elif CONFIG["pg_experiment"] == "delta_m1":
             delta_m1 = score_pred_edited - score_pred_original
             rewards = score_pred_edited + delta_m1
-            #rewards = delta_m1
+            # rewards = delta_m1
             dynamic_baseline = rewards.mean().detach()
 
         else:
@@ -384,7 +320,7 @@ class FlanT5FineTuner(pl.LightningModule):
         # Save test details
         for i in range(len(generated_texts)):
             self.epoch_test_details.append({
-                #'Epoch': self.current_epoch,
+                # 'Epoch': self.current_epoch,
                 'Premise': batch['premise'][i],
                 'Initial': batch['initial'][i],
                 'Counterfactual': batch['counterfactual'][i],
@@ -413,8 +349,8 @@ class FlanT5FineTuner(pl.LightningModule):
         #     self.log("test_overall_score", overall_test_score, prog_bar=True, logger=True)
 
         # Clear buffers for next test run
-        #self.epoch_test_details.clear()
-        #self.epoch_test_scores.clear()
+        # self.epoch_test_details.clear()
+        # self.epoch_test_scores.clear()
 
     def log_to_csv(self, csv_file_path, details, epoch=None):
         print(f"Writing {len(details)} entries to {csv_file_path}.")
