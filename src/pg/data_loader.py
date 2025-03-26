@@ -5,11 +5,13 @@ from pathlib import Path
 from src.pg.utils.utils import preprocess_data, collate_fn
 from src.pg.utils.config import CONFIG
 
+
 class CustomJSONDataset(Dataset):
     """
     A custom PyTorch Dataset class designed for loading and preprocessing data stored in JSON format.
     Supports tokenization and preprocessing for model training and evaluation.
     """
+
     def __init__(self, file_path, tokenizer):
         """
         Initializes the dataset object.
@@ -47,15 +49,16 @@ class CustomJSONDataset(Dataset):
     def __getitem__(self, idx):
         """
         Retrieves an item by its index from the dataset.
-        
+
         Args:
             idx (int): The index of the item to retrieve.
-        
+
         Returns:
             dict: A single data item, preprocessed and ready for model input.
         """
         item = self.processed_data.iloc[idx]
         return item
+
 
 def create_dataloaders(data_path, tokenizer, batch_size, num_workers):
     """
@@ -70,7 +73,7 @@ def create_dataloaders(data_path, tokenizer, batch_size, num_workers):
     Returns:
         dict: A dictionary of DataLoader objects, keyed by dataset type ('train', 'dev', 'test').
     """
-    dataset_type = CONFIG["dataset_type"] # Access dataset_type from CONFIG "ART", "TimeTravel", "AblatedTimeTravel".
+    dataset_type = CONFIG["dataset_type"]  # Access dataset_type from CONFIG "ART", "TimeTravel", "AblatedTimeTravel".
     print(f"Creating dataloaders for dataset_type: {dataset_type}")  # Debug dataset type
 
     file_names = [
@@ -87,7 +90,7 @@ def create_dataloaders(data_path, tokenizer, batch_size, num_workers):
         # Check if the dataset file exists
         if not file_path.exists():
             raise FileNotFoundError(f"{file_path} does not exist.")
-        
+
         # Create an instance of the dataset for each data file
         dataset = CustomJSONDataset(file_path, tokenizer)
 
