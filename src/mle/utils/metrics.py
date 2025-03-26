@@ -1,10 +1,10 @@
+# /data/agirard/Projects/TimeTravel-PolicyGradientRL/src/mle/utils/metrics.py
 import logging
 from sacrebleu.metrics import BLEU
 from rouge import Rouge
 from bert_score import BERTScorer
-import torch
-from src.mle.utils.config import CONFIG
 from src.BARTScore_metric.bart_score import BARTScorer
+from src.mle.utils.config import CONFIG
 
 logger = logging.getLogger(__name__)
 
@@ -15,264 +15,28 @@ class MetricsEvaluator:
 
     def __init__(self):
         """
-        Initializes the metric evaluators based on the configurations provided in CONFIG.
+        Initializes the metric evaluators with configurations from the CONFIG file.
         """
         print(f"Initializing MetricsEvaluator with config: {CONFIG}")
-        
-        # Initialize ROUGE for ROUGE score calculation
-        self.rouge = Rouge()  
-
-        # Initialize BERTScorer if configured to use BERTScore
-        self.bert_scorer = (
-            BERTScorer(
-                model_type=CONFIG.get("bert_scorer_model_type", "bert-base-uncased"),
-                device=CONFIG.get("scorer_device", "cuda" if torch.cuda.is_available() else "cpu"),
-                batch_size=CONFIG.get("bert_scorer_batch_size", 16)
-            ) if CONFIG.get("use_bert", False) else None
-        )
-
-        # Initialize BLEU scorer if configured to use BLEU
-        self.sacre_bleu = BLEU() if CONFIG.get("use_bleu", False) else None
-
-        # Initialize BARTScorer if configured to use BARTScore
-        self.bart_scorer = (
-            BARTScorer(
-                device=CONFIG.get("scorer_device", "cuda" if torch.cuda.is_available() else "cpu"),
-                checkpoint=CONFIG.get("bart_scorer_checkpoint", "facebook/bart-large-cnn")
-            ) if CONFIG.get("use_bart", False) else None
-        )
-
+        self.sacre_bleu = BLEU()  # SacreBLEU score evaluator
+        self.rouge = Rouge()  # ROUGE score evaluator
+        self.bert_scorer = BERTScorer(
+            model_type=CONFIG["bert_scorer_model_type"],
+            device=CONFIG["scorer_device"],
+            num_layers=None,
+            batch_size=CONFIG["bert_scorer_batch_size"]
+        )  # BERTScore evaluator
+        self.bart_scorer = BARTScorer(
+            device=CONFIG["scorer_device"],
+            checkpoint=CONFIG["bart_scorer_checkpoint"]
+        )  # BARTScore evaluator
         print("MetricsEvaluator initialized.")
 
-    def calculate_all_metrics(self, all_generated_texts, all_edited_endings, all_counterfactuals,
-                              all_initials, all_premises, all_original_endings):
-        """
-        Calculates metrics for all comparisons and aggregates them into a single dictionary.
-        """
-        all_metrics = {}
-
-        comparisons = [
-            ("prediction_edited", all_generated_texts, all_edited_endings),
-            ("prediction_cf", all_generated_texts, all_counterfactuals),
-            ("prediction_initial", all_generated_texts, all_initials),
-            ("prediction_original", all_generated_texts, all_original_endings),
-            ("edited_ending_cf", all_edited_endings, all_counterfactuals),
-            ("edited_ending_initial", all_edited_endings, all_initials),
-            ("edited_ending_original", all_edited_endings, all_original_endings),
-        ]
-
-        for label, texts_a, texts_b in comparisons:
-            if texts_b:
-                metrics = self.calculate_and_log_metrics(texts_a, texts_b, label)
-                all_metrics.update(metrics)
-
-        return all_metrics
-
-    def calculate_and_log_metrics(self, generated_texts, references, comparison_label):
-        """
-        Calculate all similarity metrics for a single text comparison.
-        """
-        metrics = {}
-        try:
-            if self.bart_scorer:
-                scores = self.bart_scorer.score(generated_texts, references, batch_size=4)
-                avg_score = sum(scores) / len(scores) if scores else float('nan')
-                metrics[f"{comparison_label}_bart_avg_score"] = avg_score
-        except Exception as e:
-            self._log_error(f"{comparison_label}_bart", e)
-
-        try:
-            if self.bert_scorer:
-                _, _, f1 = self.bert_scorer.score(generated_texts, references)
-                metrics[f"{comparison_label}_bert_f1"] = f1.mean().item()
-        except Exception as e:
-            self._log_error(f"{comparison_label}_bert", e)
-
-        try:
-            if self.sacre_bleu:
-                references_nested = [[ref] for ref in references]
-                bleu_score = self.sacre_bleu.corpus_score(generated_texts, references_nested).score
-                metrics[f"{comparison_label}_bleu"] = bleu_score
-        except Exception as e:
-            self._log_error(f"{comparison_label}_bleu", e)
-
-        try:
-            rouge_scores = self.rouge.get_scores(generated_texts, references, avg=True)
-            for rouge_type in ["rouge-1", "rouge-2", "rouge-l"]:
-                metrics[f"{comparison_label}_{rouge_type}_f"] = rouge_scores[rouge_type]["f"]
-        except Exception as e:
-            self._log_error(f"{comparison_label}_rouge", e)
-
-        return metrics
-
-    def calculate_score(self, generated_texts, references):
-        """
-        Calculates the score based on the specified metric in CONFIG.
-        This method supports ROUGE-L, BERTScore, BLEU, and BARTScore as scoring mechanisms.
-        
-        Args:
-            generated_texts (list of str): Texts generated by the model.
-            references (list of str): Reference texts (ground truth).
-
-        Returns:
-            scores_tensor (torch.Tensor): A tensor of score values per example on the specified device.
-        """
-        score_metric = CONFIG.get("reward_metric", "rouge")
-        #Todo: Amelie, why this is cpu not gpu?
-        scorer_device = CONFIG.get("scorer_device", "cpu")
-
-        # Debugging prints for input and metric selection
-        print(f"Score metric: {score_metric}")
-        print(f"Generated texts: {generated_texts}")
-        print(f"Reference texts: {references}")
-
-        # Ensure inputs are lists of strings
-        generated_texts = [str(gt) for gt in generated_texts]
-        references = [str(ref) for ref in references]
-
-        # Case 1: ROUGE-L is selected as the score metric
-        if score_metric == "rouge":
-            print("Calculating ROUGE-L scores...")
-            rouge_scores = self.rouge.get_scores(generated_texts, references, avg=False)
-            scores = [score['rouge-l']['f'] for score in rouge_scores]  # Extract ROUGE-L F1 scores
-
-        # Case 2: BERTScore is selected as the score metric
-        elif score_metric == "bert":
-            if self.bert_scorer is None:
-                raise ValueError("BERTScore is not initialized. Set 'use_bert' to True in CONFIG.")
-            print("Calculating BERTScore...")
-            _, _, f1 = self.bert_scorer.score(generated_texts, references)
-            scores = f1.tolist()  # Convert tensor to list
-
-        # Case 3: BLEU is selected as the score metric with one-to-one comparison
-        elif score_metric == "bleu":
-            if self.sacre_bleu is None:
-                raise ValueError("BLEU scorer is not initialized. Set 'use_bleu' to True in CONFIG.")
-            print("Calculating corpus-level BLEU score...")
-
-            # SacreBLEU corpus score calculation, where the references need to be nested as a list of lists
-            references = [[ref] for ref in references]  # Corpus-level BLEU expects list of list of references
-            bleu_result = self.sacre_bleu.corpus_score(generated_texts, references)
-            score = bleu_result.score  # Retrieve the BLEU score for the corpus
-
-            # Print BLEU score for debugging
-            print(f"Corpus-level BLEU score: {score}")
-            scores = [score] * len(generated_texts)  # Replicate for each item in batch for compatibility
-
-
-        # Case 4: BARTScore is selected as the score metric
-        elif score_metric == "bart":
-            if self.bart_scorer is None:
-                raise ValueError("BARTScore is not initialized. Set 'use_bart' to True in CONFIG.")
-            print("Calculating BARTScore...")
-            scores = self.bart_scorer.score(generated_texts, references)  # BARTScore for each example
-
-        # Unsupported score metric
-        else:
-            raise ValueError(f"Unsupported score metric: {score_metric}")
-
-        # Convert scores to a tensor and move it to the specified device
-        scores_tensor = torch.tensor(scores, dtype=torch.float32, device=scorer_device)
-        print(f"Scores tensor (on {scorer_device}): {scores_tensor}")  # Print the final scores tensor
-        return scores_tensor
-
-    def calculate_and_log_rouge_scores(self, all_generated_texts, all_edited_endings, all_counterfactuals, all_initials, all_premises, all_original_endings, logger):
-        """
-        Calculates and logs ROUGE scores for various comparisons between generated texts and references.
-        """
-        print("Calculating ROUGE scores...")
-
-        all_comparisons = [
-            ('rouge_prediction_edited', all_generated_texts, all_edited_endings),
-            ('rouge_prediction_cf', all_generated_texts, all_counterfactuals),
-            ('rouge_prediction_initial', all_generated_texts, all_initials),
-            ('rouge_prediction_original', all_generated_texts, all_original_endings),
-            ('rouge_edited_ending_cf', all_edited_endings, all_counterfactuals),
-            ('rouge_edited_ending_initial', all_edited_endings, all_initials),
-            ('rouge_edited_ending_original', all_edited_endings, all_original_endings),
-        ]
-
-        rouge_scores = {}
-        for label, hypotheses, references in all_comparisons:
-            if references:
-                try:
-                    rouge_scores_set = self.rouge.get_scores(hypotheses, references, avg=True)
-                    score_type = 'rouge-l'
-                    rouge_scores[f"{label}_{score_type}_f"] = rouge_scores_set[score_type]['f']
-                    logger.info(f"{label}_{score_type}_f: {rouge_scores_set[score_type]['f']}")
-                except Exception as e:
-                    logger.error(f"Error calculating {label}: {e}")
-                    rouge_scores[f"{label}_f"] = 'N/A'
-
-        return rouge_scores
-
-    def calculate_and_log_bert_similarity(self, all_generated_texts, all_edited_endings, all_counterfactuals, all_initials, all_premises, all_original_endings, logger):
-        """
-        Calculates and logs BERT similarity F1 scores for various comparisons of generated texts and references.
-        """
-        print("Calculating BERT similarity F1 scores...")
-
-        all_comparisons = [
-            ('bert_prediction_edited', all_generated_texts, all_edited_endings),
-            ('bert_prediction_cf', all_generated_texts, all_counterfactuals),
-            ('bert_prediction_initial', all_generated_texts, all_initials),
-            ('bert_prediction_original', all_generated_texts, all_original_endings),
-            ('bert_edited_ending_cf', all_edited_endings, all_counterfactuals),
-            ('bert_edited_ending_initial', all_edited_endings, all_initials),
-            ('bert_edited_ending_original', all_edited_endings, all_original_endings),
-        ]
-
-        bert_scores = {}
-        for label, texts_a, texts_b in all_comparisons:
-            if texts_b:
-                try:
-                    _, _, f1 = self.bert_scorer.score(texts_a, texts_b)
-                    avg_f1 = f1.mean().item()
-                    logger.info(f"{label}_f1: {avg_f1}")
-                    bert_scores[f"{label}_f1"] = avg_f1
-                except Exception as e:
-                    logger.error(f"Error calculating {label}: {e}")
-                    bert_scores[f"{label}_f1"] = 'N/A'
-
-        return bert_scores
-
-    def calculate_and_log_bart_similarity(self, all_generated_texts, all_edited_endings, all_counterfactuals, all_initials, all_premises, all_original_endings, logger):
-        """
-        Calculates and logs BART-based similarity scores for a variety of text comparisons,
-        using the BARTScorer to evaluate the similarity between different segments of texts.
-        """
-        print("Calculating BART similarity scores...")
-        
-        all_comparisons = [
-            ('bart_prediction_edited', all_generated_texts, all_edited_endings),
-            ('bart_prediction_cf', all_generated_texts, all_counterfactuals),
-            ('bart_prediction_initial', all_generated_texts, all_initials),
-            ('bart_prediction_original', all_generated_texts, all_original_endings),
-            ('bart_edited_ending_cf', all_edited_endings, all_counterfactuals),
-            ('bart_edited_ending_initial', all_edited_endings, all_initials),
-            ('bart_edited_ending_original', all_edited_endings, all_original_endings),
-        ]
-
-        bart_scores = {}
-        for label, src_texts, tgt_texts in all_comparisons:
-            if tgt_texts:
-                try:
-                    scores = self.bart_scorer.score(src_texts, tgt_texts, batch_size=4)
-                    avg_score = sum(scores) / len(scores) if scores else float('nan')
-                    logger.info(f"{label}_avg_score: {avg_score}")
-                    bart_scores[f"{label}_avg_score"] = avg_score
-                    print(f"{label}_avg_score: {avg_score}")
-                except Exception as e:
-                    logger.error(f"Error calculating {label}: {e}")
-                    bart_scores[f"{label}_avg_score"] = 'N/A'
-                    print(f"Error calculating {label}: {e}")
-
-        return bart_scores
-
-    def calculate_and_log_bleu_scores(self, all_generated_texts, all_edited_endings, all_counterfactuals, all_initials, all_premises, all_original_endings, logger):
+    def calculate_and_log_bleu_scores(self, all_generated_texts, all_edited_endings, all_counterfactuals, all_initials,
+                                      all_premises, all_original_endings, logger):
         """
         Calculates and logs SacreBLEU scores for various comparisons between generated texts and references.
-        
+
         Args:
         - all_generated_texts: List of generated texts
         - all_edited_endings: List of reference edited endings
@@ -326,5 +90,132 @@ class MetricsEvaluator:
 
         return bleu_scores
 
-    def _log_error(self, metric_name, error):
-        logger.error(f"Error calculating {metric_name}: {error}")
+    def calculate_and_log_rouge_scores(self, all_generated_texts, all_edited_endings, all_counterfactuals, all_initials, all_premises, all_original_endings, logger):
+        """
+        Calculates and logs ROUGE scores for various comparisons of generated texts and references.
+        """
+        print("Calculating ROUGE scores...")
+        # Define all comparisons to calculate ROUGE scores
+        all_comparisons = [
+            ('rouge_prediction_edited', all_generated_texts, all_edited_endings),
+            ('rouge_prediction_cf', all_generated_texts, all_counterfactuals),
+            ('rouge_prediction_initial', all_generated_texts, all_initials),
+            ('rouge_prediction_original', all_generated_texts, all_original_endings),
+            ('rouge_edited_ending_cf', all_edited_endings, all_counterfactuals),
+            ('rouge_edited_ending_initial', all_edited_endings, all_initials),
+            ('rouge_edited_ending_original', all_edited_endings, all_original_endings),
+        ]
+
+        print(f"ROUGE Comparisons: {all_comparisons}")
+
+        # Initialize dictionary to store Rouge-L F-scores
+        rouge_scores = {}
+
+        # Calculate and log ROUGE-L F-scores for each comparison
+        for label, hypotheses, references in all_comparisons:
+            if references:
+                try:
+                    # Calculate Rouge-L score
+                    rouge_scores_set = self.rouge.get_scores(hypotheses, references, avg=True)
+                    score_type = 'rouge-l'
+
+                    # Store Rouge-L F-score
+                    rouge_scores[f"{label}_{score_type}_f"] = rouge_scores_set[score_type]['f']
+
+                    # Log and print the Rouge-L F-score
+                    logger.info(f"{label}_{score_type}_f: {rouge_scores_set[score_type]['f']}")
+                    print(f"{label}_{score_type}_f: {rouge_scores_set[score_type]['f']}")
+                    
+                except Exception as e:
+                    logger.error(f"Error calculating {label}: {e}")
+                    rouge_scores[f"{label}_f"] = 'N/A'
+                    print(f"Error calculating {label}: {e}")
+
+        return rouge_scores
+
+    def calculate_and_log_bert_similarity(self, all_generated_texts, all_edited_endings, all_counterfactuals, all_initials, all_premises, all_original_endings, logger):
+        """
+        Calculates and logs BERT similarity F1 scores for various comparisons of generated texts and references.
+        """
+        print("Calculating BERT similarity F1 scores...")
+
+        # Define all comparisons to calculate BERT similarity scores
+        all_comparisons = [
+            ('bert_prediction_edited', all_generated_texts, all_edited_endings),
+            ('bert_prediction_cf', all_generated_texts, all_counterfactuals),
+            ('bert_prediction_initial', all_generated_texts, all_initials),
+            ('bert_prediction_original', all_generated_texts, all_original_endings),
+            ('bert_edited_ending_cf', all_edited_endings, all_counterfactuals),
+            ('bert_edited_ending_initial', all_edited_endings, all_initials),
+            ('bert_edited_ending_original', all_edited_endings, all_original_endings),
+        ]
+
+        print(f"BERT Comparisons: {all_comparisons}")
+
+        # Calculate and log BERT F1 scores for each comparison
+        bert_scores = {}
+        
+        for label, texts_a, texts_b in all_comparisons:
+            if texts_b:
+                try:
+                    # Get the F1 score (third element of the tuple)
+                    _, _, f1 = self.bert_scorer.score(texts_a, texts_b)
+                    
+                    # Calculate the mean F1 score across all text pairs
+                    avg_f1 = f1.mean().item()
+                    
+                    # Log and store the F1 score for the current comparison
+                    logger.info(f"{label}_f1: {avg_f1}")
+                    bert_scores[f"{label}_f1"] = avg_f1
+                    print(f"{label}_f1: {avg_f1}")
+                    
+                except Exception as e:
+                    # Log the error if something goes wrong in the BERT score calculation
+                    logger.error(f"Error calculating {label}: {e}")
+                    bert_scores[f"{label}_f1"] = 'N/A'
+                    print(f"Error calculating {label}: {e}")
+
+        return bert_scores
+
+    def calculate_and_log_bart_similarity(self, all_generated_texts, all_edited_endings, all_counterfactuals, all_initials, all_premises, all_original_endings, logger):
+        """
+        Calculates and logs BART-based similarity scores for a variety of text comparisons,
+        using the BARTScorer to evaluate the similarity between different segments of texts.
+        This version only supports single-reference scoring.
+        """
+        print("Calculating BART similarity scores...")
+        
+        # Define all pairs of text segments for which to calculate similarity scores
+        all_comparisons = [
+            ('bart_prediction_edited', all_generated_texts, all_edited_endings),
+            ('bart_prediction_cf', all_generated_texts, all_counterfactuals),
+            ('bart_prediction_initial', all_generated_texts, all_initials),
+            ('bart_prediction_original', all_generated_texts, all_original_endings),
+            ('bart_edited_ending_cf', all_edited_endings, all_counterfactuals),
+            ('bart_edited_ending_initial', all_edited_endings, all_initials),
+            ('bart_edited_ending_original', all_edited_endings, all_original_endings),
+        ]
+
+        print(f"BART Comparisons: {all_comparisons}")
+
+        # Calculate and log BARTScores for each comparison
+        bart_scores = {}
+        for label, src_texts, tgt_texts in all_comparisons:
+            if tgt_texts:
+                try:
+                    # Single-reference scoring
+                    scores = self.bart_scorer.score(src_texts, tgt_texts, batch_size=4)
+
+                    # Validate that the number of scores matches the number of source texts
+                    if len(scores) != len(src_texts):
+                        raise ValueError(f"Mismatch in the number of scores returned. Expected {len(src_texts)} but got {len(scores)}.")
+
+                    avg_score = sum(scores) / len(scores) if scores else float('nan')
+                    logger.info(f"{label}_avg_score: {avg_score}")
+                    bart_scores[f"{label}_avg_score"] = avg_score
+                    print(f"{label}_avg_score: {avg_score}")
+                except Exception as e:
+                    logger.error(f"Error calculating {label}: {e}")
+                    bart_scores[f"{label}_avg_score"] = 'N/A'
+                    print(f"Error calculating {label}: {e}")
+        return bart_scores

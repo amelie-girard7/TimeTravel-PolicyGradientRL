@@ -1,0 +1,145 @@
+#/data/agirard/Projects/Timetravel/main_gemini.py
+"""
+Main script for generating text using Gemini 2.0.
+It loads gold data, runs inference (zero-shot or one-shot) using Gemini 2.0,
+and optionally computes similarity metrics.
+"""
+
+import os
+import sys
+import time
+import uuid
+import logging
+import pandas as pd
+
+# Import configuration and Gemini 2.0 inference functions only
+from src.utils.config import CONFIG
+from src.utils.utils import gemini_zero_shot_inference, gemini_one_shot_inference
+from src.utils.metrics import MetricsEvaluator
+
+# Configure logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+def run_similarity_metrics(results, results_path):
+    """
+    Run similarity metrics on the generated results and save them to a CSV file.
+    """
+    metrics_evaluator = MetricsEvaluator()
+
+    # Extract required fields for metrics evaluation
+    generated_texts = [result['generated_text'] for result in results]
+    counterfactuals = [result['counterfactual'] for result in results]
+    initials = [result['initial'] for result in results]
+    premises = [result['premise'] for result in results]
+    original_endings = [result['original_ending'] for result in results]
+    edited_endings = [result.get('edited_ending', '') for result in results]
+
+    all_metrics = {}
+
+    logger.info("Calculating BART similarity scores...")
+    bart_scores = metrics_evaluator.calculate_and_log_bart_similarity(
+        generated_texts, edited_endings, counterfactuals, initials, premises, original_endings, logger
+    )
+    all_metrics.update(bart_scores)
+
+    logger.info("Calculating BERT similarity scores...")
+    bert_scores = metrics_evaluator.calculate_and_log_bert_similarity(
+        generated_texts, edited_endings, counterfactuals, initials, premises, original_endings, logger
+    )
+    all_metrics.update(bert_scores)
+
+    logger.info("Calculating BLEU scores...")
+    bleu_scores = metrics_evaluator.calculate_and_log_bleu_scores(
+        generated_texts, edited_endings, counterfactuals, initials, premises, original_endings, logger
+    )
+    all_metrics.update(bleu_scores)
+
+    logger.info("Calculating ROUGE scores...")
+    rouge_scores = metrics_evaluator.calculate_and_log_rouge_scores(
+        generated_texts, edited_endings, counterfactuals, initials, premises, original_endings, logger
+    )
+    all_metrics.update(rouge_scores)
+
+    # Create a DataFrame from the metrics and save to CSV
+    metrics_df = pd.DataFrame.from_dict(all_metrics, orient='index', columns=['Value'])
+    metrics_df.reset_index(inplace=True)
+    metrics_df.columns = ['Metric', 'Value']
+    
+    metrics_results_path = results_path.replace(".csv", "_metrics.csv")
+    metrics_df.to_csv(metrics_results_path, index=False)
+    logger.info(f"Similarity metrics saved to {metrics_results_path}")
+
+def main():
+    """
+    Main function to load data, run Gemini 2.0 inference, and optionally compute similarity metrics.
+    """
+    # Display current configuration settings for debugging
+    print(f"Inference Mode: {CONFIG['inference_mode']}")
+    print(f"Run Similarities Only: {CONFIG['run_similarities_only']}")
+    print(f"Example Selection: {CONFIG['example_selection']}")
+
+    # Ensure the API key is set
+    api_key = os.getenv("GEMINI_API_KEY")
+    if not api_key:
+        print("Error: Please set the GEMINI_API_KEY environment variable.")
+        sys.exit(1)
+
+    # Define the path to the gold data file
+    gold_data_path = "/data/agirard/Projects/Timetravel/data/transformed/gold_without_diff.json"
+    if not os.path.exists(gold_data_path):
+        print(f"Gold data file does not exist: {gold_data_path}")
+        return
+
+    # Load the gold data
+    print(f"Loading gold data from: {gold_data_path}")
+    gold_data = pd.read_json(gold_data_path, lines=True)
+    print("Gold data loaded successfully. Sample data:")
+    print(gold_data.head())
+
+    results = None
+    results_path = None
+
+    if not CONFIG["run_similarities_only"]:
+        # Run Gemini 2.0 inference based on the selected mode
+        if CONFIG["inference_mode"] == "zero_shot":
+            print("Running Gemini 2.0 zero-shot inference...")
+            results = gemini_zero_shot_inference(api_key, gold_data)
+            results_path = "/data/agirard/Projects/Timetravel/results/gemini/gemini_zero_shot_results.csv"
+        elif CONFIG["inference_mode"] == "one_shot":
+            print("Running Gemini 2.0 one-shot inference...")
+            results = gemini_one_shot_inference(api_key, gold_data, CONFIG["example_selection"])
+            if CONFIG["example_selection"] == "random":
+                results_path = "/data/agirard/Projects/Timetravel/results/gemini/gemini_one_shot_results_random.csv"
+            else:
+                results_path = "/data/agirard/Projects/Timetravel/results/gemini/gemini_one_shot_results_fixed.csv"
+        else:
+            print(f"Unknown inference mode: {CONFIG['inference_mode']}")
+            return
+
+        # Save the inference results to a CSV file
+        pd.DataFrame(results).to_csv(results_path, index=False)
+        print(f"Inference results saved to {results_path}")
+
+    else:
+        # If only computing similarity metrics, load the existing results file
+        if CONFIG["inference_mode"] == "zero_shot":
+            results_path = "/data/agirard/Projects/Timetravel/results/gemini/gemini_zero_shot_results.csv"
+        elif CONFIG["inference_mode"] == "one_shot":
+            if CONFIG["example_selection"] == "random":
+                results_path = "/data/agirard/Projects/Timetravel/results/gemini/gemini_one_shot_results_random.csv"
+            else:
+                results_path = "/data/agirard/Projects/Timetravel/results/gemini/gemini_one_shot_results_fixed.csv"
+        else:
+            print(f"Invalid mode for running similarities: {CONFIG['inference_mode']}")
+            return
+
+        if not os.path.exists(results_path):
+            print(f"Results file does not exist: {results_path}")
+            return
+
+        results = pd.read_csv(results_path).to_dict('records')
+        run_similarity_metrics(results, results_path)
+
+if __name__ == "__main__":
+    main()
