@@ -1,0 +1,43 @@
+{
+  "os":  "Linux-4.18.0-477.27.1.el8_8.x86_64-x86_64-with-glibc2.28",
+  "python":  "3.11.8",
+  "startedAt":  "2025-03-27T04:08:28.139700Z",
+  "program":  "/data/agirard/Projects/TimeTravel-PolicyGradientRL/src/pg/train.py",
+  "codePath":  "src/pg/train.py",
+  "git":  {
+    "remote":  "https://github.com/amelie-girard7/TimeTravel-PolicyGradientRL.git",
+    "commit":  "8cc1d0ba2fa16e2c891b62ffd4987180c77628ec"
+  },
+  "email":  "amelie.girard@student.uts.edu.au",
+  "root":  ".",
+  "host":  "lightning1.ihpc.uts.edu.au",
+  "username":  "agirard",
+  "executable":  "/data/agirard/anaconda3/envs/myenv/bin/python",
+  "codePathLocal":  "train.py",
+  "cpu_count":  16,
+  "cpu_count_logical":  16,
+  "gpu":  "[NVIDIA A40]",
+  "gpu_count":  1,
+  "disk":  {
+    "/":  {
+      "total":  "1166903869440",
+      "used":  "539536891904"
+    }
+  },
+  "memory":  {
+    "total":  "134752235520"
+  },
+  "cpu":  {
+    "count":  16,
+    "countLogical":  16
+  },
+  "gpu_nvidia":  [
+    {
+      "name":  "NVIDIA A40",
+      "memoryTotal":  "48305799168",
+      "cudaCores":  10752,
+      "architecture":  "Ampere"
+    }
+  ],
+  "cudaVersion":  "12.4"
+}

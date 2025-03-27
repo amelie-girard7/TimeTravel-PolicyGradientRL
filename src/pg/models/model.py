@@ -54,19 +54,13 @@ class FlanT5FineTuner(pl.LightningModule):
         self.metrics_evaluator = MetricsEvaluator()
 
     def forward(self, input_ids, attention_mask):
-        # Determine whether to use greedy decoding or sampling
-        do_sample = not CONFIG.get("use_greedy_reward", False)  # Use sampling if use_greedy_reward is False
-        num_beams = 1 if CONFIG.get("use_greedy_reward", False) else 1  # Use greedy decoding if use_greedy_reward is True
-        temperature = CONFIG.get("temperature", 0.7)
 
         outputs = self.model.generate(
             input_ids=input_ids,
             attention_mask=attention_mask,
             max_length=CONFIG['max_gen_length'],
-            do_sample=do_sample,  # Enable sampling or greedy decoding
-            num_beams=num_beams,  # Use greedy decoding (num_beams=1) or sampling (num_beams=1)
-            # temperature=0.7 if do_sample else None,  # Temperature only applies to sampling
-            temperature=temperature if do_sample else None,  # Temperature only applies to sampling
+            do_sample=True,  # Enable sampling or greedy decoding
+            temperature=0.7,  # Temperature only applies to sampling
             output_scores=True,
             return_dict_in_generate=True
         )
@@ -115,6 +109,11 @@ class FlanT5FineTuner(pl.LightningModule):
         # Sum log probabilities across the sequence dimension
         sequence_log_prob_sum = token_log_probs.sum(dim=1)
 
+        # Check rewards explicitly
+        if torch.isnan(rewards).any():
+            logger.warning("NaN detected in rewards, replacing with zeros")
+            rewards = torch.nan_to_num(rewards, nan=0.0)
+
         # Handle special case for BART (negative rewards)
         # if CONFIG.get("reward_metric") == "bart":
         #   rewards = rewards + 4  # add a Baseline to move to the positif size but you keep the magnitude
@@ -122,43 +121,66 @@ class FlanT5FineTuner(pl.LightningModule):
 
     def training_step(self, batch, batch_idx):
         input_ids, attention_mask, labels = batch['input_ids'], batch['attention_mask'], batch['labels']
-        # Forward pass
-        generated_tokens, logits = self.forward(input_ids=input_ids, attention_mask=attention_mask)
-
-        generated_texts = self.tokenizer.batch_decode(generated_tokens, skip_special_tokens=True)
-
-        # Get ground-truth references
         edited_endings = [str(ee) for ee in batch['edited_ending']]
         original_endings = [str(oe) for oe in batch['original_ending']]
 
-        score_pred_edited = self.metrics_evaluator.calculate_score(generated_texts, edited_endings).detach()
-        score_pred_original = self.metrics_evaluator.calculate_score(generated_texts, original_endings).detach()
+        if CONFIG["pg_experiment"] == "SCST":
+            # SCST Implementation
+            generated_outputs_greedy = self.model.generate(
+                input_ids=input_ids,
+                attention_mask=attention_mask,
+                do_sample=False,
+                max_length=CONFIG['max_gen_length'],
+                output_scores=True,
+                return_dict_in_generate=True
+            )
 
-        if CONFIG["pg_experiment"] == "fixed":
-            rewards = score_pred_edited - CONFIG["baseline_score"]
-            dynamic_baseline = 0.0  # No dynamic baseline needed
+            generated_outputs_sampled = self.model.generate(
+                input_ids=input_ids,
+                attention_mask=attention_mask,
+                do_sample=True,
+                temperature=CONFIG.get("temperature", 0.7),
+                max_length=CONFIG['max_gen_length'],
+                output_scores=True,
+                return_dict_in_generate=True
+            )
 
-        elif CONFIG["pg_experiment"] == "dynamic":
-            dynamic_baseline = score_pred_edited.mean().detach()
-            rewards = score_pred_edited - dynamic_baseline
+            generated_tokens = generated_outputs_sampled.sequences
+            logits = generated_outputs_sampled.scores
+            generated_texts = self.tokenizer.batch_decode(generated_tokens, skip_special_tokens=True)
+            generated_texts_greedy = self.tokenizer.batch_decode(generated_outputs_greedy.sequences, skip_special_tokens=True)
 
-        elif CONFIG["pg_experiment"] == "delta_m1":
-            delta_m1 = score_pred_edited - score_pred_original
-            rewards = score_pred_edited + delta_m1
-            # rewards = delta_m1
-            dynamic_baseline = rewards.mean().detach()
-            rewards = rewards - dynamic_baseline
+            score_pred_edited = self.metrics_evaluator.calculate_score(generated_texts, edited_endings).detach()
+            score_pred_original = self.metrics_evaluator.calculate_score(generated_texts, original_endings).detach()
+            score_pred_edited_greedy = self.metrics_evaluator.calculate_score(generated_texts_greedy, edited_endings).detach()
 
+            rewards = score_pred_edited - score_pred_edited_greedy
+            dynamic_baseline = 0.0
         else:
-            raise ValueError(f"Invalid PG experiment: {CONFIG['pg_experiment']}")
+            # Original forward pass
+            generated_tokens, logits = self.forward(input_ids=input_ids, attention_mask=attention_mask)
+            generated_texts = self.tokenizer.batch_decode(generated_tokens, skip_special_tokens=True)
 
-        # --- NEW CODE START: Apply objective clipping if enabled (Try #1) ---
+            score_pred_edited = self.metrics_evaluator.calculate_score(generated_texts, edited_endings).detach()
+            score_pred_original = self.metrics_evaluator.calculate_score(generated_texts, original_endings).detach()
+
+            if CONFIG["pg_experiment"] == "fixed":
+                rewards = score_pred_edited - CONFIG["baseline_score"]
+                dynamic_baseline = 0.0
+            elif CONFIG["pg_experiment"] == "dynamic":
+                dynamic_baseline = score_pred_edited.mean().detach()
+                rewards = score_pred_edited - dynamic_baseline
+            elif CONFIG["pg_experiment"] == "delta_m1":
+                delta_m1 = score_pred_edited - score_pred_original
+                rewards = score_pred_edited + delta_m1
+                dynamic_baseline = rewards.mean().detach()
+                rewards = rewards - dynamic_baseline
+            else:
+                raise ValueError(f"Invalid PG experiment: {CONFIG['pg_experiment']}")
+
         if CONFIG.get("objective_clipping", False):
-            # Ensure rewards are non-negative by clipping them at 0
             rewards = torch.clamp(rewards, min=0.0)
-        # --- NEW CODE END ---
 
-        # Calculate PG loss
         pg_loss = self.calculate_policy_gradient_loss(generated_tokens, logits, rewards, baseline=dynamic_baseline)
 
         # Logging
@@ -169,23 +191,53 @@ class FlanT5FineTuner(pl.LightningModule):
         if CONFIG["pg_experiment"] == "delta_m1":
             self.log('training_pg_delta_m1_mean', delta_m1.mean().item(), on_step=True, on_epoch=True, prog_bar=True,
                      logger=True)
+        elif CONFIG["pg_experiment"] == "SCST":
+            self.log('training_score_greedy', score_pred_edited_greedy.mean(), logger=True)
 
         logger.info(
-            f'[TRAIN] PG Loss: {pg_loss}, Baseline: {dynamic_baseline}, ΔM1 Mean: {delta_m1.mean().item() if CONFIG["pg_experiment"] == "delta_m1" else "N/A"}')
+            f'[TRAIN] PG Loss: {pg_loss}, Baseline: {dynamic_baseline}, '
+            f'ΔM1 Mean: {delta_m1.mean().item() if CONFIG["pg_experiment"] == "delta_m1" else "N/A"}'
+        )
 
         return pg_loss
 
     def validation_step(self, batch, batch_idx):
-
         input_ids, attention_mask, labels = batch['input_ids'], batch['attention_mask'], batch['labels']
         print(f"Validation Step: Processing batch {batch_idx}")
-        generated_tokens, logits = self.forward(input_ids=input_ids, attention_mask=attention_mask)
 
-        generated_texts = self.tokenizer.batch_decode(generated_tokens, skip_special_tokens=True)
+        # Generate texts
+        if CONFIG["pg_experiment"] == "SCST":
+            generated_outputs_greedy = self.model.generate(
+                input_ids=input_ids,
+                attention_mask=attention_mask,
+                do_sample=False,
+                max_length=CONFIG['max_gen_length'],
+                output_scores=True,
+                return_dict_in_generate=True
+            )
 
-        # Debug: Check for empty generated texts and print details
+            generated_outputs_sampled = self.model.generate(
+                input_ids=input_ids,
+                attention_mask=attention_mask,
+                do_sample=True,
+                temperature=CONFIG.get("temperature", 0.7),
+                max_length=CONFIG['max_gen_length'],
+                output_scores=True,
+                return_dict_in_generate=True
+            )
+
+            generated_tokens = generated_outputs_sampled.sequences
+            logits = generated_outputs_sampled.scores
+            generated_texts = self.tokenizer.batch_decode(generated_tokens, skip_special_tokens=True)
+            generated_texts_greedy = self.tokenizer.batch_decode(generated_outputs_greedy.sequences,
+                                                                 skip_special_tokens=True)
+        else:
+            generated_tokens, logits = self.forward(input_ids=input_ids, attention_mask=attention_mask)
+            generated_texts = self.tokenizer.batch_decode(generated_tokens, skip_special_tokens=True)
+
+        # Debug empty sequences
         for i, gen_text in enumerate(generated_texts):
-            if not gen_text.strip():  # If text is empty or only whitespace
+            if not gen_text.strip():
                 print(f"DEBUG: Empty generated text detected in validation batch {batch_idx}, sample index {i}.")
                 print(f"DEBUG: Input IDs: {input_ids[i]}")
                 if 'premise' in batch:
@@ -193,164 +245,178 @@ class FlanT5FineTuner(pl.LightningModule):
                 else:
                     print("DEBUG: 'premise' not found in batch.")
 
-        # Continue with rest of the validation step processing...
         edited_endings = [str(ee) for ee in batch['edited_ending']]
         original_endings = [str(oe) for oe in batch['original_ending']]
 
-        # Calculate scores
-        score_pred_edited = self.metrics_evaluator.calculate_score(generated_texts, edited_endings).detach()
-        score_pred_original = self.metrics_evaluator.calculate_score(generated_texts, original_endings).detach()
+        # Calculate scores with robust error handling
+        try:
+            if CONFIG["pg_experiment"] == "SCST":
+                score_pred_edited = self.metrics_evaluator.calculate_score(generated_texts, edited_endings).detach()
+                score_pred_edited_greedy = self.metrics_evaluator.calculate_score(generated_texts_greedy,
+                                                                                  edited_endings).detach()
 
-        # Handle the different experiments
-        if CONFIG["pg_experiment"] == "fixed":
-            rewards = score_pred_edited - CONFIG["baseline_score"]
-            dynamic_baseline = 0.0  # No dynamic baseline needed
+                # SCST reward computation
+                rewards = score_pred_edited - score_pred_edited_greedy
+                dynamic_baseline = 0.0
+            else:
+                score_pred_edited = self.metrics_evaluator.calculate_score(generated_texts, edited_endings).detach()
 
-        elif CONFIG["pg_experiment"] == "dynamic":
-            dynamic_baseline = score_pred_edited.mean().detach()
-            rewards = score_pred_edited - dynamic_baseline
+                if CONFIG["pg_experiment"] == "fixed":
+                    rewards = score_pred_edited - CONFIG["baseline_score"]
+                    dynamic_baseline = 0.0
+                elif CONFIG["pg_experiment"] == "dynamic":
+                    dynamic_baseline = score_pred_edited.mean().detach()
+                    rewards = score_pred_edited - dynamic_baseline
+                elif CONFIG["pg_experiment"] == "delta_m1":
+                    score_pred_original = self.metrics_evaluator.calculate_score(generated_texts,
+                                                                                 original_endings).detach()
+                    delta_m1 = score_pred_edited - score_pred_original
+                    rewards = score_pred_edited + delta_m1
+                    dynamic_baseline = rewards.mean().detach()
+                    rewards = rewards - dynamic_baseline
 
-        elif CONFIG["pg_experiment"] == "delta_m1":
-            delta_m1 = score_pred_edited - score_pred_original
-            rewards = score_pred_edited + delta_m1
-            #rewards = delta_m1
-            dynamic_baseline = rewards.mean().detach()
+            # Apply objective clipping if enabled (BEFORE loss calculation)
+            if CONFIG.get("objective_clipping", False):
+                rewards = torch.clamp(rewards, min=0.0)
 
-        else:
-            raise ValueError(f"Invalid PG experiment: {CONFIG['pg_experiment']}")
+            # Final NaN protection (safety net)
+            rewards = torch.nan_to_num(rewards, nan=0.0)
 
-        # Compute PG validation loss (baseline = 0.0, since no updates occur)
+        except Exception as e:
+            print(f"Error calculating scores: {e}")
+            rewards = torch.zeros(len(generated_texts), device=self.device)
+            dynamic_baseline = 0.0
+
+        if CONFIG.get("objective_clipping", False):
+            rewards = torch.clamp(rewards, min=0.0)
+
+        # Calculate loss with protected rewards
         pg_val_loss = self.calculate_policy_gradient_loss(generated_tokens, logits, rewards, baseline=0.0)
 
-        # Log validation metrics
+        # Logging
         self.log('validation_pg_loss', pg_val_loss, on_epoch=True, prog_bar=True, logger=True)
         self.log('validation_pg_reward_mean', rewards.mean(), on_epoch=True, prog_bar=True, logger=True)
         self.log('validation_pg_baseline', dynamic_baseline, on_epoch=True, prog_bar=True, logger=True)
 
         if CONFIG["pg_experiment"] == "delta_m1":
             self.log('validation_pg_delta_m1_mean', delta_m1.mean().item(), on_epoch=True, prog_bar=True, logger=True)
+        elif CONFIG["pg_experiment"] == "SCST":
+            self.log('validation_score_greedy', score_pred_edited_greedy.mean(), logger=True)
 
         # Save validation details
         for i in range(len(generated_texts)):
-            self.epoch_validation_details.append({
-                # 'Epoch': self.current_epoch,
+            detail = {
                 'Premise': batch['premise'][i],
                 'Initial': batch['initial'][i],
                 'Counterfactual': batch['counterfactual'][i],
                 'Original Ending': batch['original_ending'][i],
                 'Edited Ending': edited_endings[i],
                 'Generated Text': generated_texts[i]
-            })
+            }
+            if CONFIG["pg_experiment"] == "SCST":
+                detail['Generated Text Greedy'] = generated_texts_greedy[i]
+            self.epoch_validation_details.append(detail)
 
         logger.info(
-            f'[VALIDATION] Epoch {self.current_epoch} | PG Loss: {pg_val_loss}, ΔM1 Mean: {delta_m1.mean().item() if CONFIG["pg_experiment"] == "delta_m1" else "N/A"}')
-
-        # --- NEW CODE START: Apply objective clipping if enabled (Try #1) ---
-        if CONFIG.get("objective_clipping", False):
-            # Ensure rewards are non-negative by clipping them at 0
-            rewards = torch.clamp(rewards, min=0.0)
-        # --- NEW CODE END ---
+            f'[VALIDATION] Epoch {self.current_epoch} | PG Loss: {pg_val_loss}, '
+            f'ΔM1 Mean: {delta_m1.mean().item() if CONFIG["pg_experiment"] == "delta_m1" else "N/A"}'
+        )
 
         return pg_val_loss
 
-    def on_validation_epoch_end(self):
-        """
-        Finalize and save validation results at the end of the validation epoch.
-        """
-        print("Validation Epoch End")
-        # if self.epoch_validation_details:
-        # print(f"Saving {len(self.epoch_validation_details)} validation details to {self.val_csv_file_path}.")
-        # self.log_to_csv(self.val_csv_file_path, self.epoch_validation_details, epoch=self.current_epoch)
-
-        # if self.epoch_scores:
-        #     overall_val_score = torch.tensor(self.epoch_scores).mean().item()
-        #     print(f"Overall validation score: {overall_val_score}")
-        #     self.log("overall_score", overall_val_score, prog_bar=True, logger=True)
-
-        # Clear buffers for next validation run
-        # self.epoch_validation_details.clear()
-        # self.epoch_scores.clear()
-
     def test_step(self, batch, batch_idx):
         input_ids, attention_mask, labels = batch['input_ids'], batch['attention_mask'], batch['labels']
-        generated_tokens, logits = self.forward(input_ids=input_ids, attention_mask=attention_mask)
 
-        generated_texts = self.tokenizer.batch_decode(generated_tokens, skip_special_tokens=True)
+        if CONFIG["pg_experiment"] == "SCST":
+            generated_outputs_greedy = self.model.generate(
+                input_ids=input_ids,
+                attention_mask=attention_mask,
+                do_sample=False,
+                max_length=CONFIG['max_gen_length'],
+                output_scores=True,
+                return_dict_in_generate=True
+            )
+
+            generated_outputs_sampled = self.model.generate(
+                input_ids=input_ids,
+                attention_mask=attention_mask,
+                do_sample=True,
+                temperature=CONFIG.get("temperature", 0.7),
+                max_length=CONFIG['max_gen_length'],
+                output_scores=True,
+                return_dict_in_generate=True
+            )
+
+            generated_tokens = generated_outputs_sampled.sequences
+            logits = generated_outputs_sampled.scores
+            generated_texts = self.tokenizer.batch_decode(generated_tokens, skip_special_tokens=True)
+            generated_texts_greedy = self.tokenizer.batch_decode(generated_outputs_greedy.sequences,
+                                                                 skip_special_tokens=True)
+        else:
+            generated_tokens, logits = self.forward(input_ids=input_ids, attention_mask=attention_mask)
+            generated_texts = self.tokenizer.batch_decode(generated_tokens, skip_special_tokens=True)
+
         edited_endings = [str(ee) for ee in batch['edited_ending']]
         original_endings = [str(oe) for oe in batch['original_ending']]
 
-        # Compute scores
-        score_pred_edited = self.metrics_evaluator.calculate_score(generated_texts, edited_endings).detach()
-        score_pred_original = self.metrics_evaluator.calculate_score(generated_texts, original_endings).detach()
+        if CONFIG["pg_experiment"] == "SCST":
+            score_pred_edited = self.metrics_evaluator.calculate_score(generated_texts, edited_endings).detach()
+            score_pred_original = self.metrics_evaluator.calculate_score(generated_texts, original_endings).detach()
+            score_pred_edited_greedy = self.metrics_evaluator.calculate_score(generated_texts_greedy,
+                                                                              edited_endings).detach()
 
-        # Handle the different experiments
-        if CONFIG["pg_experiment"] == "fixed":
-            rewards = score_pred_edited - CONFIG["baseline_score"]
-            dynamic_baseline = 0.0  # No dynamic baseline needed
-
-        elif CONFIG["pg_experiment"] == "dynamic":
-            dynamic_baseline = score_pred_edited.mean().detach()
-            rewards = score_pred_edited - dynamic_baseline
-
-        elif CONFIG["pg_experiment"] == "delta_m1":
-            delta_m1 = score_pred_edited - score_pred_original
-            rewards = score_pred_edited + delta_m1
-            # rewards = delta_m1
-            dynamic_baseline = rewards.mean().detach()
-
+            rewards = score_pred_edited - score_pred_edited_greedy
+            dynamic_baseline = 0.0
         else:
-            raise ValueError(f"Invalid PG experiment: {CONFIG['pg_experiment']}")
+            score_pred_edited = self.metrics_evaluator.calculate_score(generated_texts, edited_endings).detach()
+            score_pred_original = self.metrics_evaluator.calculate_score(generated_texts, original_endings).detach()
 
-        # --- NEW CODE START: Apply objective clipping if enabled (Try #1) ---
+            if CONFIG["pg_experiment"] == "fixed":
+                rewards = score_pred_edited - CONFIG["baseline_score"]
+                dynamic_baseline = 0.0
+            elif CONFIG["pg_experiment"] == "dynamic":
+                dynamic_baseline = score_pred_edited.mean().detach()
+                rewards = score_pred_edited - dynamic_baseline
+            elif CONFIG["pg_experiment"] == "delta_m1":
+                delta_m1 = score_pred_edited - score_pred_original
+                rewards = score_pred_edited + delta_m1
+                dynamic_baseline = rewards.mean().detach()
+
         if CONFIG.get("objective_clipping", False):
             rewards = torch.clamp(rewards, min=0.0)
-        # --- NEW CODE END ---
 
-        # Compute PG test loss (baseline = 0.0, since no updates occur)
         pg_test_loss = self.calculate_policy_gradient_loss(generated_tokens, logits, rewards, baseline=0.0)
 
-        # Log test metrics
+        # Logging
         self.log('test_pg_loss', pg_test_loss, on_epoch=True, prog_bar=True, logger=True)
         self.log('test_pg_reward_mean', rewards.mean(), on_epoch=True, prog_bar=True, logger=True)
         self.log('test_pg_baseline', dynamic_baseline, on_epoch=True, prog_bar=True, logger=True)
 
         if CONFIG["pg_experiment"] == "delta_m1":
             self.log('test_pg_delta_m1_mean', delta_m1.mean().item(), on_epoch=True, prog_bar=True, logger=True)
+        elif CONFIG["pg_experiment"] == "SCST":
+            self.log('test_score_greedy', score_pred_edited_greedy.mean(), logger=True)
 
         # Save test details
         for i in range(len(generated_texts)):
-            self.epoch_test_details.append({
-                # 'Epoch': self.current_epoch,
+            detail = {
                 'Premise': batch['premise'][i],
                 'Initial': batch['initial'][i],
                 'Counterfactual': batch['counterfactual'][i],
                 'Original Ending': batch['original_ending'][i],
                 'Edited Ending': edited_endings[i],
                 'Generated Text': generated_texts[i]
-            })
+            }
+            if CONFIG["pg_experiment"] == "SCST":
+                detail['Generated Text Greedy'] = generated_texts_greedy[i]
+            self.epoch_test_details.append(detail)
 
         logger.info(
-            f'[TEST] Epoch {self.current_epoch} | PG Loss: {pg_test_loss}, ΔM1 Mean: {delta_m1.mean().item() if CONFIG["pg_experiment"] == "delta_m1" else "N/A"}')
+            f'[TEST] Epoch {self.current_epoch} | PG Loss: {pg_test_loss}, '
+            f'ΔM1 Mean: {delta_m1.mean().item() if CONFIG["pg_experiment"] == "delta_m1" else "N/A"}'
+        )
 
         return pg_test_loss
-
-    def on_test_epoch_end(self):
-        """
-        Finalize and save test results at the end of the test epoch.
-        """
-        print("Test Epoch End")
-        # if self.epoch_test_details:
-        #     print(f"Saving {len(self.epoch_test_details)} test details to {self.test_csv_file_path}.")
-        #     self.log_to_csv(self.test_csv_file_path, self.epoch_test_details, epoch=self.current_epoch)
-
-        # if self.epoch_test_scores:
-        #     overall_test_score = torch.tensor(self.epoch_test_scores).mean().item()
-        #     print(f"Overall test score: {overall_test_score}")
-        #     self.log("test_overall_score", overall_test_score, prog_bar=True, logger=True)
-
-        # Clear buffers for next test run
-        # self.epoch_test_details.clear()
-        # self.epoch_test_scores.clear()
 
     def log_to_csv(self, csv_file_path, details, epoch=None):
         print(f"Writing {len(details)} entries to {csv_file_path}.")

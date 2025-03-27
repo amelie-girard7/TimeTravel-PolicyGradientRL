@@ -1,0 +1,1 @@
+{"_wandb":{"runtime":557},"training_pg_loss_step":-0.38231131434440613,"_timestamp":1.7430339082848175e+09,"_step":3,"trainer/global_step":199,"training_pg_reward_mean_step":1.7881393432617188e-07,"_runtime":453.481290378,"training_pg_baseline_step":-2.1458234786987305,"epoch":0}

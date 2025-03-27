@@ -1,0 +1,1 @@
+{"training_score_greedy":-1.5103340148925781,"_wandb":{"runtime":411},"_runtime":408.731967346,"_step":1,"training_pg_loss_step":-17.79574203491211,"trainer/global_step":99,"_timestamp":1.7430495503402297e+09,"training_pg_reward_mean_step":-0.5182667970657349,"training_pg_baseline_step":0,"epoch":0}
