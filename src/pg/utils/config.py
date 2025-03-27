@@ -51,31 +51,31 @@ CONFIG = {
     "use_custom_loss": False,  # Whether to use a custom loss function (set to False for MLE)
     "output_attentions": False,  # Set to True to output attentions from the model (optional)
     # Additional configuration for scoring metrics
-    "reward_metric": "bert",  # "rouge","bart", "bert","bleu" (default to "rouge")
+    "reward_metric": "bart",  # "rouge","bart", "bert","bleu" (default to "rouge")
     # Add temperature for sampling
     "temperature": 0.7,  # Temperature for sampling (default: 0.7)
 
     # **Experiment Selection**
-    "pg_experiment": "dynamic",  # Options: "fixed", "dynamic", "delta_m1"
+    "pg_experiment": "SCST",  # Options: "fixed", "dynamic", "delta_m1", "SCST"
     "delta_m1_enabled": False,  # Enable Delta_M1 reward adjustments
     "baseline_score": 0.5,  # Used for PG fixed baseline experiment
 
     # PG Training
-    # "pg_from_checkpoint": True,
-    # "pg_checkpoint_path": "/data/agirard/Projects/TimeTravel-PolicyGradientRL/models/mle_2025-03-18-12/checkpoint-epoch=00-val_loss=1.00.ckpt",   # MLE1_TT
-    # "pg_epochs": 5,  # Number of epochs to fine-tune with PG
+    "pg_from_checkpoint": True,
+    "pg_checkpoint_path": "/data/agirard/Projects/TimeTravel-PolicyGradientRL/models/mle_2025-03-18-12/checkpoint-epoch=00-val_loss=1.00.ckpt",   # MLE1_TT
+    "pg_epochs": 1,  # Number of epochs to fine-tune with PG
 
     # "pg_from_checkpoint": True,
     # "pg_checkpoint_path": "/data/agirard/Projects/TimeTravel-PolicyGradientRL/models/mle_2025-03-18-13/checkpoint-epoch=01-val_loss=0.98.ckpt",   # MLE2_TT
     # "pg_epochs": 4,  # Number of epochs to fine-tune with PG
 
-    "pg_from_checkpoint": True,
-    "pg_checkpoint_path": "/data/agirard/Projects/TimeTravel-PolicyGradientRL/models/model_2024-03-22-10/checkpoint-epoch=05-val_loss=0.86.ckpt",   # MLE6_TT
-    "pg_epochs": 1,  # Number of epochs to fine-tune with PG
+    # "pg_from_checkpoint": True,
+    # "pg_checkpoint_path": "/data/agirard/Projects/TimeTravel-PolicyGradientRL/models/model_2024-03-22-10/checkpoint-epoch=05-val_loss=0.86.ckpt",   # MLE6_TT
+    # "pg_epochs": 1,  # Number of epochs to fine-tune with PG
 
     # New configuration for PG objective modifications:
     "objective_clipping": False,  # Disable reward clipping (keep raw rewards as computed)
-    "use_greedy_reward": True,   # Disable greedy decoding (use the sampled outputs as before)
+    #"use_greedy_reward": False,   # Disable greedy decoding (use the sampled outputs as before)
   
     # Additional configuration for scoring metrics 
     "use_bert": True,  # Disable BERT scorer

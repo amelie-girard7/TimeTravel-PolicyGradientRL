@@ -115,6 +115,7 @@ def main():
         #'/data/agirard/Projects/TimeTravel-PolicyGradientRL/models/pg_2025-03-24-21', # T5-base, BERT, dynamic,  temp 0.7, MLE1 - clipping
         #'/data/agirard/Projects/TimeTravel-PolicyGradientRL/models/pg_2025-03-25-11', # T5-base, BERT, dynamic,  temp 0.7, MLE2 - clipping
         '/data/agirard/Projects/TimeTravel-PolicyGradientRL/models/pg_2025-03-25-14', # T5-base, BERT, dynamic, MLE1 - Greedy
+        '/data/agirard/Projects/TimeTravel-PolicyGradientRL/models/pg_2025-03-27-14', # Test T5-base, BART, dynamic, MLE1 - SCST
         
 
     ]
