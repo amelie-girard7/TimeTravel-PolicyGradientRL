@@ -125,11 +125,10 @@ class FlanT5FineTuner(pl.LightningModule):
         original_endings = [str(oe) for oe in batch['original_ending']]
 
         if CONFIG["pg_experiment"] == "SCST":
-            # SCST Implementation
             generated_outputs_greedy = self.model.generate(
                 input_ids=input_ids,
                 attention_mask=attention_mask,
-                do_sample=False,
+                do_sample=False, # Greedy decoding
                 max_length=CONFIG['max_gen_length'],
                 output_scores=True,
                 return_dict_in_generate=True
@@ -145,16 +144,36 @@ class FlanT5FineTuner(pl.LightningModule):
                 return_dict_in_generate=True
             )
 
+            # Retrieve generated tokens and decode them into texts
             generated_tokens = generated_outputs_sampled.sequences
             logits = generated_outputs_sampled.scores
             generated_texts = self.tokenizer.batch_decode(generated_tokens, skip_special_tokens=True)
-            generated_texts_greedy = self.tokenizer.batch_decode(generated_outputs_greedy.sequences, skip_special_tokens=True)
 
+            generated_tokens_greedy = generated_outputs_greedy.sequences
+            generated_texts_greedy = self.tokenizer.batch_decode(generated_tokens_greedy, skip_special_tokens=True)
+
+            # ---------------------------
+            # Calculate scores for both decoded outputs
+            # ---------------------------
+            # Sampled outputs scores
             score_pred_edited = self.metrics_evaluator.calculate_score(generated_texts, edited_endings).detach()
             score_pred_original = self.metrics_evaluator.calculate_score(generated_texts, original_endings).detach()
-            score_pred_edited_greedy = self.metrics_evaluator.calculate_score(generated_texts_greedy, edited_endings).detach()
 
-            rewards = score_pred_edited - score_pred_edited_greedy
+            # Greedy outputs scores
+            score_pred_edited_greedy = self.metrics_evaluator.calculate_score(generated_texts_greedy, edited_endings).detach()
+            score_pred_original_greedy = self.metrics_evaluator.calculate_score(generated_texts_greedy, original_endings).detach()
+
+            # ---------------------------
+            # Compute ΔM1 (delta_m1) for both sampled and greedy
+            # ---------------------------
+            delta_m1_sampled = score_pred_edited - score_pred_original
+            delta_m1_greedy = score_pred_edited_greedy - score_pred_original_greedy
+
+            # ---------------------------
+            # Calculate the new reward as per the request:
+            # reward = [BART_score(sampled, edited ending) + ΔM1_sampled] - [BART_score(greedy, edited ending) + ΔM1_greedy]
+            # ---------------------------
+            rewards = (score_pred_edited + delta_m1_sampled) - (score_pred_edited_greedy + delta_m1_greedy)
             dynamic_baseline = 0.0
         else:
             # Original forward pass
@@ -186,27 +205,28 @@ class FlanT5FineTuner(pl.LightningModule):
         # Logging
         self.log('training_pg_loss', pg_loss, on_step=True, on_epoch=True, prog_bar=True, logger=True)
         self.log('training_pg_reward_mean', rewards.mean(), on_step=True, on_epoch=True, prog_bar=True, logger=True)
-        self.log('training_pg_baseline', dynamic_baseline, on_step=True, on_epoch=True, prog_bar=True, logger=True)
+        # self.log('training_pg_baseline', dynamic_baseline, on_step=True, on_epoch=True, prog_bar=True, logger=True)
 
-        if CONFIG["pg_experiment"] == "delta_m1":
-            self.log('training_pg_delta_m1_mean', delta_m1.mean().item(), on_step=True, on_epoch=True, prog_bar=True,
-                     logger=True)
-        elif CONFIG["pg_experiment"] == "SCST":
-            self.log('training_score_greedy', score_pred_edited_greedy.mean(), logger=True)
-
-        logger.info(
-            f'[TRAIN] PG Loss: {pg_loss}, Baseline: {dynamic_baseline}, '
-            f'ΔM1 Mean: {delta_m1.mean().item() if CONFIG["pg_experiment"] == "delta_m1" else "N/A"}'
-        )
+        # if CONFIG["pg_experiment"] == "delta_m1":
+        #     self.log('training_pg_delta_m1_mean', delta_m1.mean().item(), on_step=True, on_epoch=True, prog_bar=True,
+        #              logger=True)
+        # elif CONFIG["pg_experiment"] == "SCST":
+        #     self.log('training_score_greedy', score_pred_edited_greedy.mean(), logger=True)
+        #
+        # logger.info(
+        #     f'[TRAIN] PG Loss: {pg_loss}, Baseline: {dynamic_baseline}, '
+        #     f'ΔM1 Mean: {delta_m1.mean().item() if CONFIG["pg_experiment"] == "delta_m1" else "N/A"}'
+        # )
 
         return pg_loss
 
     def validation_step(self, batch, batch_idx):
         input_ids, attention_mask, labels = batch['input_ids'], batch['attention_mask'], batch['labels']
-        print(f"Validation Step: Processing batch {batch_idx}")
+        # print(f"Validation Step: Processing batch {batch_idx}")
 
         # Generate texts
         if CONFIG["pg_experiment"] == "SCST":
+            # Greedy (baseline) decoding
             generated_outputs_greedy = self.model.generate(
                 input_ids=input_ids,
                 attention_mask=attention_mask,
@@ -215,7 +235,7 @@ class FlanT5FineTuner(pl.LightningModule):
                 output_scores=True,
                 return_dict_in_generate=True
             )
-
+            # Sampled decoding
             generated_outputs_sampled = self.model.generate(
                 input_ids=input_ids,
                 attention_mask=attention_mask,
@@ -225,12 +245,14 @@ class FlanT5FineTuner(pl.LightningModule):
                 output_scores=True,
                 return_dict_in_generate=True
             )
-
+            # Retrieve generated tokens and decode texts
             generated_tokens = generated_outputs_sampled.sequences
             logits = generated_outputs_sampled.scores
             generated_texts = self.tokenizer.batch_decode(generated_tokens, skip_special_tokens=True)
-            generated_texts_greedy = self.tokenizer.batch_decode(generated_outputs_greedy.sequences,
-                                                                 skip_special_tokens=True)
+
+            generated_tokens_greedy = generated_outputs_greedy.sequences
+            generated_texts_greedy = self.tokenizer.batch_decode(generated_tokens_greedy, skip_special_tokens=True)
+
         else:
             generated_tokens, logits = self.forward(input_ids=input_ids, attention_mask=attention_mask)
             generated_texts = self.tokenizer.batch_decode(generated_tokens, skip_special_tokens=True)
@@ -251,12 +273,19 @@ class FlanT5FineTuner(pl.LightningModule):
         # Calculate scores with robust error handling
         try:
             if CONFIG["pg_experiment"] == "SCST":
+                # Calculate scores for sampled outputs (edited and original)
                 score_pred_edited = self.metrics_evaluator.calculate_score(generated_texts, edited_endings).detach()
-                score_pred_edited_greedy = self.metrics_evaluator.calculate_score(generated_texts_greedy,
-                                                                                  edited_endings).detach()
+                score_pred_original = self.metrics_evaluator.calculate_score(generated_texts, original_endings).detach()
+                # Calculate scores for greedy outputs (edited and original)
+                score_pred_edited_greedy = self.metrics_evaluator.calculate_score(generated_texts_greedy, edited_endings).detach()
+                score_pred_original_greedy = self.metrics_evaluator.calculate_score(generated_texts_greedy, original_endings).detach()
 
-                # SCST reward computation
-                rewards = score_pred_edited - score_pred_edited_greedy
+                # Compute ΔM1 for sampled and greedy outputs
+                delta_m1_sampled = score_pred_edited - score_pred_original
+                delta_m1_greedy = score_pred_edited_greedy - score_pred_original_greedy
+
+                # New reward computation
+                rewards = (score_pred_edited + delta_m1_sampled) - (score_pred_edited_greedy + delta_m1_greedy)
                 dynamic_baseline = 0.0
             else:
                 score_pred_edited = self.metrics_evaluator.calculate_score(generated_texts, edited_endings).detach()
@@ -268,8 +297,7 @@ class FlanT5FineTuner(pl.LightningModule):
                     dynamic_baseline = score_pred_edited.mean().detach()
                     rewards = score_pred_edited - dynamic_baseline
                 elif CONFIG["pg_experiment"] == "delta_m1":
-                    score_pred_original = self.metrics_evaluator.calculate_score(generated_texts,
-                                                                                 original_endings).detach()
+                    score_pred_original = self.metrics_evaluator.calculate_score(generated_texts, original_endings).detach()
                     delta_m1 = score_pred_edited - score_pred_original
                     rewards = score_pred_edited + delta_m1
                     dynamic_baseline = rewards.mean().detach()
@@ -278,7 +306,6 @@ class FlanT5FineTuner(pl.LightningModule):
             # Apply objective clipping if enabled (BEFORE loss calculation)
             if CONFIG.get("objective_clipping", False):
                 rewards = torch.clamp(rewards, min=0.0)
-
             # Final NaN protection (safety net)
             rewards = torch.nan_to_num(rewards, nan=0.0)
 
@@ -296,12 +323,12 @@ class FlanT5FineTuner(pl.LightningModule):
         # Logging
         self.log('validation_pg_loss', pg_val_loss, on_epoch=True, prog_bar=True, logger=True)
         self.log('validation_pg_reward_mean', rewards.mean(), on_epoch=True, prog_bar=True, logger=True)
-        self.log('validation_pg_baseline', dynamic_baseline, on_epoch=True, prog_bar=True, logger=True)
+        # self.log('validation_pg_baseline', dynamic_baseline, on_epoch=True, prog_bar=True, logger=True)
 
-        if CONFIG["pg_experiment"] == "delta_m1":
-            self.log('validation_pg_delta_m1_mean', delta_m1.mean().item(), on_epoch=True, prog_bar=True, logger=True)
-        elif CONFIG["pg_experiment"] == "SCST":
-            self.log('validation_score_greedy', score_pred_edited_greedy.mean(), logger=True)
+        # if CONFIG["pg_experiment"] == "delta_m1":
+        #     self.log('validation_pg_delta_m1_mean', delta_m1.mean().item(), on_epoch=True, prog_bar=True, logger=True)
+        # elif CONFIG["pg_experiment"] == "SCST":
+        #     self.log('validation_score_greedy', score_pred_edited_greedy.mean(), logger=True)
 
         # Save validation details
         for i in range(len(generated_texts)):
@@ -317,10 +344,10 @@ class FlanT5FineTuner(pl.LightningModule):
                 detail['Generated Text Greedy'] = generated_texts_greedy[i]
             self.epoch_validation_details.append(detail)
 
-        logger.info(
-            f'[VALIDATION] Epoch {self.current_epoch} | PG Loss: {pg_val_loss}, '
-            f'ΔM1 Mean: {delta_m1.mean().item() if CONFIG["pg_experiment"] == "delta_m1" else "N/A"}'
-        )
+        # logger.info(
+        #     f'[VALIDATION] Epoch {self.current_epoch} | PG Loss: {pg_val_loss}, '
+        #     f'ΔM1 Mean: {delta_m1.mean().item() if CONFIG["pg_experiment"] == "delta_m1" else "N/A"}'
+        # )
 
         return pg_val_loss
 
@@ -350,8 +377,10 @@ class FlanT5FineTuner(pl.LightningModule):
             generated_tokens = generated_outputs_sampled.sequences
             logits = generated_outputs_sampled.scores
             generated_texts = self.tokenizer.batch_decode(generated_tokens, skip_special_tokens=True)
-            generated_texts_greedy = self.tokenizer.batch_decode(generated_outputs_greedy.sequences,
-                                                                 skip_special_tokens=True)
+
+            generated_tokens_greedy = generated_outputs_greedy.sequences
+            generated_texts_greedy = self.tokenizer.batch_decode(generated_tokens_greedy, skip_special_tokens=True)
+
         else:
             generated_tokens, logits = self.forward(input_ids=input_ids, attention_mask=attention_mask)
             generated_texts = self.tokenizer.batch_decode(generated_tokens, skip_special_tokens=True)
@@ -360,12 +389,19 @@ class FlanT5FineTuner(pl.LightningModule):
         original_endings = [str(oe) for oe in batch['original_ending']]
 
         if CONFIG["pg_experiment"] == "SCST":
+            # Compute scores for sampled outputs
             score_pred_edited = self.metrics_evaluator.calculate_score(generated_texts, edited_endings).detach()
             score_pred_original = self.metrics_evaluator.calculate_score(generated_texts, original_endings).detach()
-            score_pred_edited_greedy = self.metrics_evaluator.calculate_score(generated_texts_greedy,
-                                                                              edited_endings).detach()
+            # Compute scores for greedy outputs
+            score_pred_edited_greedy = self.metrics_evaluator.calculate_score(generated_texts_greedy, edited_endings).detach()
+            score_pred_original_greedy = self.metrics_evaluator.calculate_score(generated_texts_greedy, original_endings).detach()
 
-            rewards = score_pred_edited - score_pred_edited_greedy
+            # Compute ΔM1 for sampled and greedy outputs
+            delta_m1_sampled = score_pred_edited - score_pred_original
+            delta_m1_greedy = score_pred_edited_greedy - score_pred_original_greedy
+
+            # New reward computation as per the updated formula
+            rewards = (score_pred_edited + delta_m1_sampled) - (score_pred_edited_greedy + delta_m1_greedy)
             dynamic_baseline = 0.0
         else:
             score_pred_edited = self.metrics_evaluator.calculate_score(generated_texts, edited_endings).detach()
@@ -390,12 +426,12 @@ class FlanT5FineTuner(pl.LightningModule):
         # Logging
         self.log('test_pg_loss', pg_test_loss, on_epoch=True, prog_bar=True, logger=True)
         self.log('test_pg_reward_mean', rewards.mean(), on_epoch=True, prog_bar=True, logger=True)
-        self.log('test_pg_baseline', dynamic_baseline, on_epoch=True, prog_bar=True, logger=True)
-
-        if CONFIG["pg_experiment"] == "delta_m1":
-            self.log('test_pg_delta_m1_mean', delta_m1.mean().item(), on_epoch=True, prog_bar=True, logger=True)
-        elif CONFIG["pg_experiment"] == "SCST":
-            self.log('test_score_greedy', score_pred_edited_greedy.mean(), logger=True)
+        # self.log('test_pg_baseline', dynamic_baseline, on_epoch=True, prog_bar=True, logger=True)
+        #
+        # if CONFIG["pg_experiment"] == "delta_m1":
+        #     self.log('test_pg_delta_m1_mean', delta_m1.mean().item(), on_epoch=True, prog_bar=True, logger=True)
+        # elif CONFIG["pg_experiment"] == "SCST":
+        #     self.log('test_score_greedy', score_pred_edited_greedy.mean(), logger=True)
 
         # Save test details
         for i in range(len(generated_texts)):
@@ -411,10 +447,10 @@ class FlanT5FineTuner(pl.LightningModule):
                 detail['Generated Text Greedy'] = generated_texts_greedy[i]
             self.epoch_test_details.append(detail)
 
-        logger.info(
-            f'[TEST] Epoch {self.current_epoch} | PG Loss: {pg_test_loss}, '
-            f'ΔM1 Mean: {delta_m1.mean().item() if CONFIG["pg_experiment"] == "delta_m1" else "N/A"}'
-        )
+        # logger.info(
+        #     f'[TEST] Epoch {self.current_epoch} | PG Loss: {pg_test_loss}, '
+        #     f'ΔM1 Mean: {delta_m1.mean().item() if CONFIG["pg_experiment"] == "delta_m1" else "N/A"}'
+        # )
 
         return pg_test_loss
 
