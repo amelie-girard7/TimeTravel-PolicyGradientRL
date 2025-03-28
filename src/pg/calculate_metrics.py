@@ -114,9 +114,12 @@ def main():
         #'/data/agirard/Projects/TimeTravel-PolicyGradientRL/models/pg_2025-03-24-13',# T5-base, BART, dynamic,  temp 0.7, MLE2 - score+Delta_M1
         #'/data/agirard/Projects/TimeTravel-PolicyGradientRL/models/pg_2025-03-24-21', # T5-base, BERT, dynamic,  temp 0.7, MLE1 - clipping
         #'/data/agirard/Projects/TimeTravel-PolicyGradientRL/models/pg_2025-03-25-11', # T5-base, BERT, dynamic,  temp 0.7, MLE2 - clipping
-        '/data/agirard/Projects/TimeTravel-PolicyGradientRL/models/pg_2025-03-25-14', # T5-base, BERT, dynamic, MLE1 - Greedy
-        '/data/agirard/Projects/TimeTravel-PolicyGradientRL/models/pg_2025-03-27-14', # Test T5-base, BART, dynamic, MLE1 - SCST
-        
+        #'/data/agirard/Projects/TimeTravel-PolicyGradientRL/models/pg_2025-03-25-14', # T5-base, BERT, dynamic, MLE1 - Greedy
+
+        #'/data/agirard/Projects/TimeTravel-PolicyGradientRL/models/pg_2025-03-27-15', # T5-base, BART, dynamic, MLE1 - PG1 - SCST
+        # '/data/agirard/Projects/TimeTravel-PolicyGradientRL/models/pg_2025-03-27-21', # T5-base, BART, dynamic, MLE1 - PG5 - SCST
+        #'/data/agirard/Projects/TimeTravel-PolicyGradientRL/models/pg_2025-03-28-06', # T5-base, BART, MLE2 - PG4 - SCST
+        # '/data/agirard/Projects/TimeTravel-PolicyGradientRL/models/pg_2025-03-28-09', # T5-base, BART, MLE2 - PG1 - SCST
 
     ]
 
