@@ -17,9 +17,9 @@ CONFIG = {
 
     # ******** Data files***********
     # Sample Timetravel sample datasets
-    "train_file": "train_supervised_small_sample.json",
-    "dev_file": "dev_data_sample.json",
-    "test_file": "test_data_sample.json",
+    "train_file": "train_supervised_small.json",
+    "dev_file": "dev_data.json",
+    "test_file": "test_data.json",
 
     # Timetravel,AblatedTimeTravel datasets
     #"train_file": "train_supervised_small.json",
@@ -65,13 +65,13 @@ CONFIG = {
     # "pg_checkpoint_path": "/data/agirard/Projects/TimeTravel-PolicyGradientRL/models/mle_2025-03-18-12/checkpoint-epoch=00-val_loss=1.00.ckpt",   # MLE1_TT
     # "pg_epochs": 5,  # Number of epochs to fine-tune with PG
 
-    "pg_from_checkpoint": True,
-    "pg_checkpoint_path": "/data/agirard/Projects/TimeTravel-PolicyGradientRL/models/mle_2025-03-18-13/checkpoint-epoch=01-val_loss=0.98.ckpt",   # MLE2_TT
-    "pg_epochs": 1,  # Number of epochs to fine-tune with PG
-
     # "pg_from_checkpoint": True,
-    # "pg_checkpoint_path": "/data/agirard/Projects/TimeTravel-PolicyGradientRL/models/model_2024-03-22-10/checkpoint-epoch=05-val_loss=0.86.ckpt",   # MLE6_TT
+    # "pg_checkpoint_path": "/data/agirard/Projects/TimeTravel-PolicyGradientRL/models/mle_2025-03-18-13/checkpoint-epoch=01-val_loss=0.98.ckpt",   # MLE2_TT
     # "pg_epochs": 1,  # Number of epochs to fine-tune with PG
+
+    "pg_from_checkpoint": True,
+    "pg_checkpoint_path": "/data/agirard/Projects/TimeTravel-PolicyGradientRL/models/model_2024-03-22-10/checkpoint-epoch=05-val_loss=0.86.ckpt",   # MLE6_TT
+    "pg_epochs": 1,  # Number of epochs to fine-tune with PG
 
     # "pg_from_checkpoint": True,
     # "pg_checkpoint_path": '/data/agirard/Projects/TimeTravel-PolicyGradientRL/models/mle_2024-12-03-15/mle_checkpoint_epoch=epoch=2-val_loss=validation_mle_loss=0.88.ckpt',  # MLE3_1-1_TT
