@@ -125,11 +125,11 @@ def main():
     # Load explicitly the best checkpoint
     model = setup_model(model_dir, file_label="_pg", checkpoint_path=best_checkpoint)
 
-    # Explicitly set up Trainer without logging for final evaluation
-    trainer = Trainer(accelerator='gpu', devices=1, logger=False)
+    # # Explicitly set up Trainer without logging for final evaluation
+    # trainer = Trainer(accelerator='gpu', devices=1, logger=False)
 
-    # Run explicit validation pass to collect and log details
-    trainer.validate(model, dataloaders[dev_key], verbose=False)
+    # # Run explicit validation pass to collect and log details
+    # trainer.validate(model, dataloaders[dev_key], verbose=False)
 
     # evaluate_and_save(
     #     model_dir=model_dir,

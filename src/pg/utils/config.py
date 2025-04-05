@@ -20,21 +20,11 @@ CONFIG = {
     "train_file": "train_supervised_small.json",
     "dev_file": "dev_data.json",
     "test_file": "test_data.json",
-
-    # Timetravel,AblatedTimeTravel datasets
-    #"train_file": "train_supervised_small.json",
-    #"dev_file": "dev_data.json",
-    #"test_file": "test_data.json",
-
-    # Sample Art dataset
-    #"train_file": "art_train_data_sample.json",
-    #"dev_file": "art_dev_data_sample.json",
-    #"test_file": "art_test_data_sample.json", 
     # 
     # Art dataset
-    #"train_file": "art_train_data.json",
-    #"dev_file": "art_dev_data.json",
-    #"test_file": "art_test_data.json",    
+    # "train_file": "art_train_data.json",
+    # "dev_file": "art_dev_data.json",
+    # "test_file": "art_test_data.json",    
 
     # Model and training configurations
     "model_name": os.getenv('MODEL_NAME', "google/flan-t5-base"),  # Hugging Face model to load
@@ -51,30 +41,18 @@ CONFIG = {
     "use_custom_loss": False,  # Whether to use a custom loss function (set to False for MLE)
     "output_attentions": False,  # Set to True to output attentions from the model (optional)
     # Additional configuration for scoring metrics
-    "reward_metric": "bart",  # "rouge","bart", "bert","bleu" (default to "rouge")
+    #"reward_metric": "bart",  # "rouge","bart", "bert","bleu" (default to "rouge")
     # Add temperature for sampling
     "temperature": 0.7,  # Temperature for sampling (default: 0.7)
 
-    # **Experiment Selection**
-    "pg_experiment": "SCST",  # Options: "fixed", "dynamic", "delta_m1", "SCST"
-    "delta_m1_enabled": False,  # Enable Delta_M1 reward adjustments
-    "baseline_score": 0.5,  # Used for PG fixed baseline experiment
+    # **PG Experiment Selection**
+    # "pg_experiment": "dynamic",  # Options: "fixed", "dynamic", "delta_m1", "SCST"
+    # "delta_m1_enabled": False,  # Enable Delta_M1 reward adjustments
+    # "baseline_score": 0.5,  # Used for PG fixed baseline experiment
 
-    # PG Training
-    # "pg_from_checkpoint": True,
-    # "pg_checkpoint_path": "/data/agirard/Projects/TimeTravel-PolicyGradientRL/models/mle_2025-03-18-12/checkpoint-epoch=00-val_loss=1.00.ckpt",   # MLE1_TT
-    # "pg_epochs": 5,  # Number of epochs to fine-tune with PG
 
     # "pg_from_checkpoint": True,
-    # "pg_checkpoint_path": "/data/agirard/Projects/TimeTravel-PolicyGradientRL/models/mle_2025-03-18-13/checkpoint-epoch=01-val_loss=0.98.ckpt",   # MLE2_TT
-    # "pg_epochs": 1,  # Number of epochs to fine-tune with PG
-
-    "pg_from_checkpoint": True,
-    "pg_checkpoint_path": "/data/agirard/Projects/TimeTravel-PolicyGradientRL/models/model_2024-03-22-10/checkpoint-epoch=05-val_loss=0.86.ckpt",   # MLE6_TT
-    "pg_epochs": 1,  # Number of epochs to fine-tune with PG
-
-    # "pg_from_checkpoint": True,
-    # "pg_checkpoint_path": '/data/agirard/Projects/TimeTravel-PolicyGradientRL/models/mle_2024-12-03-15/mle_checkpoint_epoch=epoch=2-val_loss=validation_mle_loss=0.88.ckpt',  # MLE3_1-1_TT
+    # "pg_checkpoint_path": "/data/agirard/Projects/TimeTravel-PolicyGradientRL/models/model_2025-04-02-13/checkpoint-epoch=04-val_loss=2.04.ckpt",   # MLE10, Timetravel
     # "pg_epochs": 1,  # Number of epochs to fine-tune with PG
 
 
@@ -86,12 +64,34 @@ CONFIG = {
     "use_bert": True,  # Disable BERT scorer
     "bert_scorer_model_type": "microsoft/deberta-xlarge-mnli",  # Default BERT model for scorer 
     "scorer_device": "cuda:0",  # Device for the scorer
-    "bert_scorer_batch_size": 4,  # Batch size for BERT scorer 
+    "bert_scorer_batch_size": 1,  # Batch size for BERT scorer 
 
     "use_bleu": True,  # Disable BLEU scorer,
 
     "use_bart": True,  # Disable BART scorer
-    "bart_scorer_checkpoint": "facebook/bart-large-cnn"  # Default BART model for scorer
+    "bart_scorer_checkpoint": "facebook/bart-large-cnn" , # Default BART model for scorer
+
+    # PPO Core Parameters
+    "ppo_experiment": "delta_m1",  # Options: "fixed", "dynamic", "delta_m1", "SCST"
+    "ppo_epochs": 1,               # Number of PPO epochs per batch
+    "ppo_clip_epsilon": 0.2,       # Clipping range (typical: 0.1-0.3)
+    "entropy_coef": 0.01,          # Encourages exploration (typical: 0.01-0.05)
+    "value_coef": 0.5,             # How much to trust value function (typical: 0.5-1.0)
+    "max_trajectory_length": 128,  # Buffer size before PPO update
+    "batch_size": 4,               # Small batches work better for PPO
+    "learning_rate": 2e-5,         # Lower than MLE (typical: 1e-5 to 5e-5)
+    "reward_metric": "bart",       # Or "rouge"/"bert"/"bleu"
+    "gamma": 0.99,                 # Discount factor (0.9-0.99)
+    "lambda": 0.95,                # GAE parameter (0.9-0.99)
+    
+  
+    "ppo_from_checkpoint": True,
+    "ppo_checkpoint_path": "/data/agirard/Projects/TimeTravel-PolicyGradientRL/models/model_2025-04-02-13/checkpoint-epoch=04-val_loss=2.04.ckpt",
+    "init_value_head": "random"  # or "scratch"
+
+    # Training Control
+    #"pg_experiment": "delta_m1",
+    #"objective_clipping": False,
 }
 
 # Create any directories that don't exist
