@@ -3,7 +3,7 @@ import pandas as pd
 from torch.utils.data import Dataset, DataLoader
 from pathlib import Path
 from src.pg.utils.utils import preprocess_data, collate_fn
-from src.pg.utils.config import CONFIG
+from src.pg.utils.configppo import CONFIG
 
 
 class CustomJSONDataset(Dataset):
