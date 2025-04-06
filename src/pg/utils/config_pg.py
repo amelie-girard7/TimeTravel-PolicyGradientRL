@@ -71,23 +71,7 @@ CONFIG = {
     "use_bart": True,  # Disable BART scorer
     "bart_scorer_checkpoint": "facebook/bart-large-cnn" , # Default BART model for scorer
 
-    # PPO Core Parameters
-    "ppo_experiment": "delta_m1",  # Options: "fixed", "dynamic", "delta_m1", "SCST"
-    "ppo_epochs": 1,               # Number of PPO epochs per batch
-    "ppo_clip_epsilon": 0.2,       # Clipping range (typical: 0.1-0.3)
-    "entropy_coef": 0.01,          # Encourages exploration (typical: 0.01-0.05)
-    "value_coef": 0.5,             # How much to trust value function (typical: 0.5-1.0)
-    "max_trajectory_length": 128,  # Buffer size before PPO update
-    "batch_size": 4,               # Small batches work better for PPO
-    "learning_rate": 2e-5,         # Lower than MLE (typical: 1e-5 to 5e-5)
-    "reward_metric": "bart",       # Or "rouge"/"bert"/"bleu"
-    "gamma": 0.99,                 # Discount factor (0.9-0.99)
-    "lambda": 0.95,                # GAE parameter (0.9-0.99)
-    
-  
-    "ppo_from_checkpoint": True,
-    "ppo_checkpoint_path": "/data/agirard/Projects/TimeTravel-PolicyGradientRL/models/model_2025-04-02-13/checkpoint-epoch=04-val_loss=2.04.ckpt",
-    "init_value_head": "random"  # or "scratch"
+ 
 
     # Training Control
     #"pg_experiment": "delta_m1",

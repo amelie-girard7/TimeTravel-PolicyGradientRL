@@ -1,3 +1,4 @@
+# /data/agirard/Projects/TimeTravel-PolicyGradientRL/src/pg/train_ppo.py
 import sys
 import os
 import datetime
@@ -10,7 +11,7 @@ from pytorch_lightning.callbacks import ModelCheckpoint, EarlyStopping, Learning
 from pytorch_lightning.loggers import WandbLogger
 from src.pg.models.model_ppo import FlanT5PPOFineTuner
 from src.pg.data_loader import create_dataloaders
-from src.pg.utils.config import CONFIG
+from src.pg.utils.configppo import CONFIG
 
 # Setup logging
 logging.basicConfig(

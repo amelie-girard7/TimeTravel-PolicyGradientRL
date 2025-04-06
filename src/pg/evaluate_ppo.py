@@ -4,7 +4,7 @@ from transformers import T5Tokenizer
 from pytorch_lightning import Trainer
 from src.pg.models.model_ppo import FlanT5PPOFineTuner  # New import
 from src.pg.data_loader import create_dataloaders
-from src.pg.utils.config import CONFIG
+from src.pg.utils.configppo import CONFIG
 from pathlib import Path
 from datetime import datetime
 
