@@ -7,7 +7,7 @@ import torch.nn.functional as F
 from transformers import T5ForConditionalGeneration, T5Config, T5Tokenizer
 import pytorch_lightning as pl
 from pathlib import Path
-from src.pg.utils.config import CONFIG
+from src.pg.utils.config_pg import CONFIG
 from src.pg.utils.metrics import MetricsEvaluator
 import pandas as pd
 import wandb

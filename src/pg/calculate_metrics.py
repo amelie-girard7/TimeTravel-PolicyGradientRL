@@ -130,7 +130,7 @@ def main():
     For each repository, you specify a prefix to select the files you want.
     """
     repo_paths = [
-        '/data/agirard/Projects/TimeTravel-PolicyGradientRL/models/ppo_2025-04-06-18',
+        '/data/agirard/Projects/TimeTravel-PolicyGradientRL/models/ppo_2025-04-07-20',
     ]
 
     try:
