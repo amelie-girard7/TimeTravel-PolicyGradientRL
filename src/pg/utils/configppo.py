@@ -14,9 +14,9 @@ CONFIG = {
     "dataset_type": "TimeTravel",
 
     # === Data Files ===
-    "train_file": "train_supervised_small_sample.json",
-    "dev_file": "dev_data_sample.json",
-    "test_file": "test_data_sample.json",
+    "train_file": "train_supervised_small.json",
+    "dev_file": "dev_data.json",
+    "test_file": "test_data.json",
 
     # === Model Architecture ===
     "model_name": os.getenv('MODEL_NAME', "google/flan-t5-base"),
@@ -37,7 +37,7 @@ CONFIG = {
 
     # === PPO Core Parameters ===
     "ppo_experiment": "contrastive_ratio",  # Options: "contrastive_ratio", "delta_m1", "default"
-    "ppo_epochs": 10,
+    "ppo_epochs": 4,
     "ppo_clip_epsilon": 0.2,
     "entropy_coef": 0.01,
     "value_coef": 0.5,

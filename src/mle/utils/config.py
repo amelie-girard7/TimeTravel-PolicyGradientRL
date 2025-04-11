@@ -15,23 +15,27 @@ CONFIG = {
     "logs_dir": ROOT_DIR / "logs",
     "bart_score_dir": BARTSCORE_DIR,
     "results_dir": ROOT_DIR / "results",  # Directory to save the results
+    "dataset_type": "TimeTravel",  # Options: "ART", "TimeTravel", "AblatedTimeTravel"
+
+    # Timetravel,AblatedTimeTravel datasets
+    "train_file": "train_supervised_small.json",
+    "dev_file": "dev_data.json",
+    "test_file": "test_data.json",
     
-    # File names
-    "train_file": "train_supervised_small_sample.json",
-    "dev_file": "dev_data_sample.json",
-    "test_file": "test_data_sample.json",
     #"test_file": "gold_data.json",
 
-    #"train_file": "train_supervised_small_sample.json",
-    #"dev_file": "dev_data_sample.json",
-    #"test_file": "test_data_sample.json",
+
+    # Art dataset
+    # "train_file": "art_train_data.json",
+    # "dev_file": "art_dev_data.json",
+    # "test_file": "art_test_data.json",  
     
     # Model and training configurations
     "model_name": os.getenv('MODEL_NAME', "google/flan-t5-base"),
     #"model_name": os.getenv('MODEL_NAME', "google/flan-t5-large"),
     "batch_size": int(os.getenv('BATCH_SIZE', 4)),
     "num_workers": int(os.getenv('NUM_WORKERS', 3)),
-    "max_epochs": int(os.getenv('MAX_EPOCHS', 1)),
+    "max_epochs": int(os.getenv('MAX_EPOCHS', 10)),
     "learning_rate": float(os.getenv('LEARNING_RATE', 2e-5)),
     "use_custom_loss": False,  # True if you want to use custom loss function
     "output_attentions": False,  # Enable/disable attention outputs
@@ -57,9 +61,9 @@ CONFIG = {
     "bart_scorer_checkpoint": "facebook/bart-large-cnn",
 
     # GPT Inference and evaluation settings
-    "inference_mode": "zero_shot",  # Options: zero_shot, one_shot
-    "example_selection": "fixed",  # "fixed" or "random" - Example selection for one_shot mode
-    "run_similarities_only": True  # If True, only run similarities, # False, Generate new results
+    # "inference_mode": "zero_shot",  # Options: zero_shot, one_shot
+    # "example_selection": "fixed",  # "fixed" or "random" - Example selection for one_shot mode
+    # "run_similarities_only": True  # If True, only run similarities, # False, Generate new results
 }
 
 # Optionally, validate or create the directories

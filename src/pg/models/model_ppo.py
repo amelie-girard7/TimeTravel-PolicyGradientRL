@@ -59,6 +59,8 @@ class FlanT5PPOFineTuner(pl.LightningModule):
         self.lam = CONFIG["lambda"]
         self.value_coef = CONFIG.get("value_coef", 0.5)
 
+        self.buffer_token_count = 0
+
         # Setup metric evaluator and file paths.
         self.metrics_evaluator = MetricsEvaluator()
         self.val_csv_file_path = self.model_dir / f"validation_details{self.file_label}.csv"
@@ -378,6 +380,7 @@ class FlanT5PPOFineTuner(pl.LightningModule):
     def training_step(self, batch, batch_idx):
         """
         Enhanced training step with:
+        - Proper token-count-based PPO updates
         - Removed reward normalization
         - Added sample logging
         - Better error handling
@@ -396,8 +399,8 @@ class FlanT5PPOFineTuner(pl.LightningModule):
                 max_length=CONFIG['max_gen_length'],
                 do_sample=True,
                 temperature=CONFIG.get("temperature", 0.7),
-                top_k=CONFIG.get("top_k", 50),  # Added for better sampling
-                top_p=CONFIG.get("top_p", 0.9),  # Added for better sampling
+                top_k=CONFIG.get("top_k", 50),
+                top_p=CONFIG.get("top_p", 0.9),
                 output_scores=True,
                 return_dict_in_generate=True
             )
@@ -405,19 +408,16 @@ class FlanT5PPOFineTuner(pl.LightningModule):
             generated_tokens = outputs.sequences
             generated_texts = self.tokenizer.batch_decode(generated_tokens, skip_special_tokens=True)
 
-            # Log some samples periodically
+            # Log samples periodically
             if batch_idx % 100 == 0:
-                for i in range(min(2, len(generated_texts))):  # Log first 2 samples
+                for i in range(min(2, len(generated_texts))):
                     logger.info(f"\nSample {i+1}:")
                     logger.info(f"Original: {original_endings[i]}")
                     logger.info(f"Edited: {edited_endings[i]}")
                     logger.info(f"Generated: {generated_texts[i]}\n")
 
             # --- 3. Reward Computation ---
-            rewards = self.calculate_rewards(generated_texts, edited_endings, original_endings)
-            
-            # Removed reward normalization - using raw rewards now
-            rewards = rewards.to(self.device)
+            rewards = self.calculate_rewards(generated_texts, edited_endings, original_endings).to(self.device)
 
             # --- 4. Value Estimation ---
             values = self.get_value(input_ids, attention_mask)
@@ -428,30 +428,36 @@ class FlanT5PPOFineTuner(pl.LightningModule):
             )
 
             # --- 6. Store Trajectory ---
-            trajectory_item = {
+            self.trajectory_buffer.append({
                 'old_log_probs': old_log_probs.detach(),
                 'input_ids': input_ids,
                 'attention_mask': attention_mask,
                 'generated_tokens': generated_tokens,
                 'rewards': rewards,
                 'values': values.detach()
-            }
-            
-            self.trajectory_buffer.append(trajectory_item)
+            })
 
-            # --- 7. PPO Update ---
+            # --- 7. Token Counting and PPO Update ---
+            batch_tokens = generated_tokens.numel()  # Total tokens in this batch
+            self.buffer_token_count += batch_tokens
 
-            # do we need the condition here 
-            # if len(self.trajectory_buffer) >= self.max_trajectory_length: 
-            avg_loss = self.update_ppo()
-            self.trajectory_buffer = []
-            self.log('train/avg_ppo_loss', avg_loss, prog_bar=True)
+            # Update when either:
+            # 1. Token threshold reached OR
+            # 2. This is the last batch in epoch
+            if (self.buffer_token_count >= self.max_trajectory_length or 
+                batch_idx == len(self.trainer.train_dataloader) - 1):
+                print(f" HERE Batch {batch_idx}: Added {batch_tokens} tokens (Total: {self.buffer_token_count})")                
+                avg_loss = self.update_ppo()
+                self.trajectory_buffer = []
+                self.buffer_token_count = 0
+                self.log('train/avg_ppo_loss', avg_loss, prog_bar=True)
 
             return None
 
         except Exception as e:
             logger.error(f"Training error (batch {batch_idx}): {str(e)}")
             self.trajectory_buffer = []
+            self.buffer_token_count = 0
             return None
 
     def validation_step(self, batch, batch_idx):
