@@ -24,6 +24,7 @@ def setup_trainer(max_epochs, checkpoint_callback, early_stop_callback, wandb_lo
     Configures and returns a PyTorch Lightning Trainer instance.
     """
     lr_monitor = LearningRateMonitor(logging_interval='step')
+
     callbacks = [cb for cb in [checkpoint_callback, early_stop_callback, lr_monitor, swa_callback] if cb is not None]
 
     return Trainer(
@@ -85,6 +86,15 @@ def main():
 
         # Early stopping is disabled for PPO.
         early_stop_callback = None
+
+        # Early stopping callback to stop training when the validation loss stops improving
+        # early_stop_callback = EarlyStopping(
+        #     monitor='val/avg_reward',    # Metric to monitor
+        #     min_delta=0.00,              # Minimum change to qualify as an improvement
+        #     patience=2,                  # Number of epochs with no improvement to wait before stopping
+        #     verbose=True,                # Enable verbose output for debugging
+        #     mode='max'                   # Mode 'max' means we expect the metric to increase
+        # )
 
         # Optional: Stochastic Weight Averaging callback.
         swa_callback = pl.callbacks.StochasticWeightAveraging(
