@@ -441,7 +441,7 @@ class FlanT5PPOFineTuner(pl.LightningModule):
             batch_tokens = generated_tokens.numel()  # Total tokens in this batch
             self.buffer_token_count += batch_tokens
 
-            # Update when either:
+            # Update when either: Inigo
             # 1. Token threshold reached OR
             # 2. This is the last batch in epoch
             if (self.buffer_token_count >= self.max_trajectory_length or 
