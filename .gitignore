@@ -169,5 +169,8 @@ data/
 
 src/lightning_logs/
 
-src/wandb/
+/src/wandb/
+
+/src/BARTScore_metric/
+
 
