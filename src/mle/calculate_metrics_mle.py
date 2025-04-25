@@ -151,7 +151,7 @@ def main():
     """
     # List of repository directories to process
     repo_paths = [
-        '/data/agirard/Projects/TimeTravel-PolicyGradientRL/models/model_2025-04-03-10', # MLE6 Ablated
+        '/data/agirard/Projects/TimeTravel-PolicyGradientRL/models/model_2025-04-17-22', # MLE6 Ablated
         # Add other repositories as needed
     ]
 

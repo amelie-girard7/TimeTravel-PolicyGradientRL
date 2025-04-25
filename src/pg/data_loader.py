@@ -1,9 +1,9 @@
-# /data/agirard/Projects/TimeTravel-PolicyGradientRL/src/mle/data_loader.py
+# /data/agirard/Projects/TimeTravel-PolicyGradientRL/src/pg/data_loader.py
 import pandas as pd
 from torch.utils.data import Dataset, DataLoader
 from pathlib import Path
-from src.mle.utils.utils import preprocess_data, collate_fn
-from src.mle.utils.config import CONFIG
+from src.pg.utils.utils import preprocess_data, collate_fn
+from src.pg.utils.configppo import CONFIG
 
 
 class CustomJSONDataset(Dataset):

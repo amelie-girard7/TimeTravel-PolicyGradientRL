@@ -33,7 +33,7 @@ CONFIG = {
     # Model and training configurations
     "model_name": os.getenv('MODEL_NAME', "google/flan-t5-base"),
     #"model_name": os.getenv('MODEL_NAME', "google/flan-t5-large"),
-    "batch_size": int(os.getenv('BATCH_SIZE', 4)),
+    "batch_size": int(os.getenv('BATCH_SIZE', 8)),
     "num_workers": int(os.getenv('NUM_WORKERS', 3)),
     "max_epochs": int(os.getenv('MAX_EPOCHS', 10)),
     "learning_rate": float(os.getenv('LEARNING_RATE', 2e-5)),
@@ -46,6 +46,11 @@ CONFIG = {
 
     # Text generation parameters
     "max_gen_length": 250,
+
+    "temperature": 0.7,  # 0.1-1.0, higher = more random
+    "top_k": 50,        # Consider top 50 tokens
+    "top_p": 0.9,       # Nucleus sampling threshold
+
 
     # Evaluation metrics settings
     "eval_batch_size": 1,
@@ -64,6 +69,13 @@ CONFIG = {
     # "inference_mode": "zero_shot",  # Options: zero_shot, one_shot
     # "example_selection": "fixed",  # "fixed" or "random" - Example selection for one_shot mode
     # "run_similarities_only": True  # If True, only run similarities, # False, Generate new results
+
+    # Add these new parameters
+    "value_head_hidden_size": 512,
+    "save_full_checkpoint": True  # Ensure we save all model parts
+
+
+
 }
 
 # Optionally, validate or create the directories

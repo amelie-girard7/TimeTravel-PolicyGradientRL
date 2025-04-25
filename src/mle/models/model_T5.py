@@ -26,8 +26,8 @@ class FlanT5FineTuner(pl.LightningModule):
         # Ensure model_dir is a Path object
         model_dir = Path(model_dir)
 
-        # Load the configuration for the model with output_attentions
-        config = T5Config.from_pretrained(model_name, output_attentions=CONFIG["output_attentions"])
+        # Load the configuration for the model 
+        config = T5Config.from_pretrained(model_name)
 
         # Initialize the T5 model and tokenizer with the specified configuration
         self.model = T5ForConditionalGeneration.from_pretrained(model_name, config=config)
@@ -42,74 +42,110 @@ class FlanT5FineTuner(pl.LightningModule):
         
         # Initialize a list to store detailed validation information for logging purposes
         self.epoch_validation_details = []
-  
+
+        # Add value head for PPO compatibility
+        self.value_head = torch.nn.Sequential(
+            torch.nn.Linear(self.model.config.d_model, 512),
+            torch.nn.ReLU(),
+            torch.nn.Linear(512, 1)
+        )
+        
+        # Initialize value head properly
+        self._initialize_value_head()
+
+    def _initialize_value_head(self):
+        """Standardized initialization matching MLE model"""
+        try:
+            # First try loading from checkpoint if specified
+            if CONFIG.get("init_value_head") == "from_mle" and CONFIG.get("ppo_checkpoint_path"):
+                checkpoint = torch.load(CONFIG["ppo_checkpoint_path"], map_location='cpu')
+                if 'value_head_state_dict' in checkpoint:
+                    self.value_head.load_state_dict(checkpoint['value_head_state_dict'])
+                    logger.info("Loaded value head from MLE checkpoint")
+                    return
+            
+            # Fallback to model-based initialization
+            with torch.no_grad():
+                decoder_weights = self.model.decoder.block[-1].layer[2].DenseReluDense.wi_0.weight
+                self.value_head[0].weight.data.copy_(decoder_weights[:512])
+                self.value_head[2].weight.data.copy_(decoder_weights[:1, :512].t())
+                
+                if hasattr(self.value_head[0], 'bias'):
+                    self.value_head[0].bias.data.zero_()
+                if hasattr(self.value_head[2], 'bias'):
+                    self.value_head[2].bias.data.zero_()
+        except Exception as e:
+            logger.error(f"Value head initialization failed: {e}")
+            # Final fallback
+            for layer in self.value_head:
+                if hasattr(layer, 'weight'):
+                    torch.nn.init.xavier_uniform_(layer.weight)
+                if hasattr(layer, 'bias'):
+                    layer.bias.data.zero_()
+            
+    def on_save_checkpoint(self, checkpoint):
+        checkpoint.update({
+            'value_head_state_dict': dict(self.value_head.state_dict()),
+            'model_config': self.model.config.to_dict(),
+            'checkpoint_type': 'mle',
+            'git_hash': os.popen('git rev-parse HEAD').read().strip()
+        })
+
     @classmethod
     def load_from_checkpoint(cls, checkpoint_path, map_location=None, strict=True, **kwargs):
-        """
-        Load model from checkpoint and pass additional arguments to the model's __init__ method.
-        """
-        # Extract model name and model_dir from kwargs
-        model_name = kwargs.pop('model_name')
-        model_dir = kwargs.pop('model_dir')
-        
-        # Load the checkpoint
+        """More robust checkpoint loading"""
         checkpoint = torch.load(checkpoint_path, map_location=map_location)
         
-        # Initialize the model with the provided arguments
-        model = cls(model_name=model_name, model_dir=model_dir, **kwargs)
+        # Handle both old and new checkpoint formats
+        if 'model_config' in checkpoint:
+            model = cls(
+                model_name=kwargs.pop('model_name'),
+                model_dir=kwargs.pop('model_dir'),
+                **kwargs
+            )
+        else:
+            # Fallback for old checkpoints
+            model = cls(
+                model_name=checkpoint.get('hyperparameters', {}).get('model_name'),
+                model_dir=checkpoint.get('hyperparameters', {}).get('model_dir'),
+                **kwargs
+            )
         
-        # Load the state_dict from the checkpoint
+        # Load state dict
         model.load_state_dict(checkpoint['state_dict'], strict=strict)
         
+        # Load value head if available
+        if 'value_head_state_dict' in checkpoint:
+            model.value_head.load_state_dict(checkpoint['value_head_state_dict'])
+        else:
+            logger.warning("No value head found in checkpoint, initializing new one")
+            model._initialize_value_head()
+            
         return model
 
-    def forward(self, input_ids, attention_mask, labels=None):
+    def forward(self, input_ids, labels=None):
         """
         Performs the forward pass of the model. If labels are provided, it calculates the loss; 
-        otherwise, it returns logits. This method also handles the retrieval of attention outputs.
+        otherwise, it returns logits. This method 
         """
+
+        """Add shape validation"""
+        assert input_ids.dim() == 2, f"input_ids should be 2D [batch, seq], got {input_ids.shape}"
+        if labels is not None:
+            assert labels.dim() == 2, f"labels should be 2D [batch, seq], got {labels.shape}"
+    
         outputs = self.model(
             input_ids=input_ids,
-            attention_mask=attention_mask,
-            labels=labels,
-            output_attentions=False  # Ensure attentions are returned True or False
+            labels=labels
         )
         return outputs
-
-    def custom_loss(self,outputs, targets, differential_weights):
-        """
-        Custom loss function that applies differential weights to the calculation.
-        
-        This function modifies the standard loss function by applying a different
-        weight to each token based on its importance, which is determined by the differential_weights tensor.
-        This is particularly useful for focusing the model's learning on specific parts of the input data.
-        """
-
-        logits_flat = outputs.view(-1, outputs.size(-1))  # Reshape to [batch_size * seq_length, vocab_size]
-        targets_flat = targets.view(-1)  # Flatten targets to [batch_size * seq_length]
-        differential_weights_flat = differential_weights.view(-1) # Flatten weights to match sequence length [batch_size * seq_length]  
-
-        # Ensure that the shapes of logits and differential weights align
-        if logits_flat.size(0) != differential_weights_flat.size(0):
-           raise ValueError("The size of logits and differential weights does not match, indicating a potential issue in preprocessing or batch assembly.")
-        
-        # Compute the standard loss function without reduction to get a loss value per token.
-        loss_per_token = F.cross_entropy(logits_flat, targets_flat, reduction='none')
-        
-        # Apply the differential weights to each token's loss.
-        weighted_loss_per_token = loss_per_token * differential_weights_flat
-     
-        # Calculate the mean of the weighted losses to get a single scalar representing the batch's loss.
-        mean_weighted_loss = weighted_loss_per_token.mean()
-        
-        return mean_weighted_loss
 
     def training_step(self, batch, batch_idx):
         """
         Executes a training step, calculating the loss and logging it.
 
         Parameters:
-        - batch: A single batch of data containing input IDs, attention masks, and labels.
+        - batch: A single batch of data containing input IDs,  and labels.
         - batch_idx: The index of the batch in the current epoch.
 
         Returns:
@@ -118,16 +154,10 @@ class FlanT5FineTuner(pl.LightningModule):
         # Perform a forward pass through the model to get the outputs
         outputs = self.forward(
             input_ids=batch['input_ids'],
-            attention_mask=batch['attention_mask'],
-            labels=batch['labels'],
+            labels=batch['labels']
         )
         
-        # Check the 'use_custom_loss' config and whether 'differential_weights' is in the batch
-        if CONFIG['use_custom_loss'] and 'differential_weights' in batch:
-            loss = self.custom_loss(outputs.logits, batch['labels'], batch['differential_weights'])
-        else:
-            # Use the default loss provided by the model outputs
-            loss = outputs.loss
+        loss = outputs.loss
 
             # Log the custom calculated loss for monitoring.
         self.log('train_loss', loss, on_step=True, on_epoch=True, prog_bar=True, logger=True, batch_size=batch['input_ids'].size(0))
@@ -138,7 +168,6 @@ class FlanT5FineTuner(pl.LightningModule):
         # Perform forward pass
         outputs = self.forward(
             input_ids=batch['input_ids'],
-            attention_mask=batch['attention_mask'],
             labels=batch['labels']
         )
 
@@ -146,10 +175,9 @@ class FlanT5FineTuner(pl.LightningModule):
         val_loss = outputs.loss
         self.log('val_loss', val_loss, on_step=False, on_epoch=True, prog_bar=True, logger=True, batch_size=batch['input_ids'].size(0))
 
-        # Generate text and capture attentions
+        # Generate text 
         generated_texts = self.generate_text(
-            input_ids=batch['input_ids'],
-            attention_mask=batch['attention_mask']
+            input_ids=batch['input_ids']
         )
 
         edited_endings = batch['edited_ending']
@@ -182,19 +210,34 @@ class FlanT5FineTuner(pl.LightningModule):
         # Log average validation loss
         self.log_dict({"avg_val_loss": val_loss}, on_step=False, on_epoch=True, prog_bar=True, logger=True, batch_size=batch['input_ids'].size(0))
 
-    def generate_text(self, input_ids, attention_mask):
-        # Generate text sequences and capture attentions
+    def generate_text(self, input_ids):
+        """Generate text with proper configuration for PPO training"""
+        assert input_ids.dim() == 2, f"input_ids should be 2D [batch, seq], got {input_ids.shape}"
+        # Generate with sampling for diversity (important for PPO)
         generated_ids = self.model.generate(
-            input_ids=input_ids, 
-            attention_mask=attention_mask, 
+            input_ids=input_ids,
             max_length=CONFIG["max_gen_length"],
+            do_sample=True,  # Match PPO behavior
+            temperature=CONFIG.get("temperature", 0.7),
+            top_k=CONFIG.get("top_k", 50),
+            top_p=CONFIG.get("top_p", 0.9),
+            num_return_sequences=1
         )
-        # Decode generated sequences into text
+            
+        # Handle batch dimension properly
+        if generated_ids.dim() == 1:  # Single sequence case
+            generated_ids = generated_ids.unsqueeze(0)
+        
+        # Keep this critical decoding step!
         generated_texts = [
-            self.tokenizer.decode(generated_id, skip_special_tokens=True, clean_up_tokenization_spaces=True)
+            self.tokenizer.decode(
+                generated_id, 
+                skip_special_tokens=True, 
+                clean_up_tokenization_spaces=True
+            )
             for generated_id in generated_ids
         ]
-        # Return generated texts 
+        
         return generated_texts
 
     def on_validation_epoch_end(self, test_flag=False):

@@ -1,0 +1,475 @@
+# /data/agirard/Projects/TimeTravel-PolicyGradientRL/src/pg/models/model.py
+import csv
+import logging
+import os
+import torch
+import torch.nn.functional as F
+from transformers import T5ForConditionalGeneration, T5Config, T5Tokenizer
+import pytorch_lightning as pl
+from pathlib import Path
+from src.pg.utils.config_pg import CONFIG
+from src.pg.utils.metrics import MetricsEvaluator
+import pandas as pd
+import wandb
+
+# Initialize a logger for debugging and output control
+logger = logging.getLogger(__name__)
+
+
+class FlanT5FineTuner(pl.LightningModule):
+
+    def __init__(self, model_name, model_dir, file_label=""):
+        """
+        Initializes the fine-tuner with the specified model and tokenizer.
+        """
+        super().__init__()
+        # Save only essential hyperparameters
+        self.save_hyperparameters('model_name')
+
+        # Store model_dir and file_label as instance variables
+        self.model_dir = Path(model_dir)
+        self.file_label = file_label
+
+        # Load T5 model and tokenizer with configurations specified in CONFIG
+        config = T5Config.from_pretrained(
+            model_name,
+            output_attentions=CONFIG["output_attentions"]
+        )
+        self.model = T5ForConditionalGeneration.from_pretrained(model_name)
+        self.tokenizer = T5Tokenizer.from_pretrained(model_name)
+
+        # Set unique file paths using `file_label` to prevent overwriting
+        self.val_csv_file_path = self.model_dir / f"validation_details{self.file_label}.csv"
+        self.test_csv_file_path = self.model_dir / f"test_details{self.file_label}.csv"
+
+        # Initialize buffers for validation
+        self.epoch_validation_details = []  # Storage for each validation epoch
+        self.epoch_scores = []  # Validation scores buffer
+
+        # Initialize buffers for testing
+        self.epoch_test_details = []  # Storage for each test epoch
+        self.epoch_test_scores = []  # Test scores buffer
+
+        # Initialize MetricsEvaluator to handle custom scoring for rewards
+        self.metrics_evaluator = MetricsEvaluator()
+
+    def forward(self, input_ids, attention_mask):
+
+        outputs = self.model.generate(
+            input_ids=input_ids,
+            attention_mask=attention_mask,
+            max_length=CONFIG['max_gen_length'],
+            do_sample=True,  # Enable sampling or greedy decoding
+            temperature=0.7,  # Temperature only applies to sampling
+            output_scores=True,
+            return_dict_in_generate=True
+        )
+        generated_tokens = outputs.sequences
+        logits = outputs.scores
+        return generated_tokens, logits
+
+    def apply_vocab_masking(self, logits):
+        """
+        Masks logits for tokens beyond the vocabulary size of the tokenizer.
+        Handles both 2D and 3D tensors for compatibility with generated logits.
+        """
+        vocab_size = self.tokenizer.vocab_size
+
+        # Check if logits is 2D (batch_size, vocab_size) or 3D (batch_size, sequence_length, vocab_size)
+        if logits.dim() == 2:
+            # Mask for 2D logits (each decoding step in generate)
+            masked_logits = logits.clone()
+            masked_logits[:, vocab_size:] = -float('inf')
+        elif logits.dim() == 3:
+            # Mask for 3D logits (entire sequence logits from forward pass)
+            masked_logits = logits.clone()
+            masked_logits[:, :, vocab_size:] = -float('inf')
+        else:
+            raise ValueError(f"Unexpected logits dimension: expected 2 or 3, got {logits.dim()}")
+
+        return masked_logits
+
+    def calculate_policy_gradient_loss(self, generated_tokens, logits, rewards, baseline):
+        """
+        Calculates policy gradient loss based on generated tokens and rewards.
+        BART scores are flipped in sign to change from reward to loss
+        """
+        # Stack logits along the sequence dimension and apply log softmax
+        logits = torch.log_softmax(torch.stack(logits, dim=1), dim=-1)
+        logits = self.apply_vocab_masking(logits)  # Apply masking to stacked logits
+
+        # Gather the log probabilities for the generated tokens
+        labels_for_indexing = generated_tokens[:, 1:].contiguous()
+        token_log_probs = logits.gather(dim=-1, index=labels_for_indexing.unsqueeze(-1)).squeeze(-1)
+
+        # Create a mask to ignore padding tokens
+        padding_mask = labels_for_indexing != self.tokenizer.pad_token_id
+        token_log_probs = token_log_probs * padding_mask.float()
+
+        # Sum log probabilities across the sequence dimension
+        sequence_log_prob_sum = token_log_probs.sum(dim=1)
+
+        # Check rewards explicitly
+        if torch.isnan(rewards).any():
+            logger.warning("NaN detected in rewards, replacing with zeros")
+            rewards = torch.nan_to_num(rewards, nan=0.0)
+
+        # Handle special case for BART (negative rewards)
+        # if CONFIG.get("reward_metric") == "bart":
+        #   rewards = rewards + 4  # add a Baseline to move to the positif size but you keep the magnitude
+        return -(rewards * sequence_log_prob_sum).mean()
+
+    def training_step(self, batch, batch_idx):
+        input_ids, attention_mask, labels = batch['input_ids'], batch['attention_mask'], batch['labels']
+        edited_endings = [str(ee) for ee in batch['edited_ending']]
+        original_endings = [str(oe) for oe in batch['original_ending']]
+
+        if CONFIG["pg_experiment"] == "SCST":
+            generated_outputs_greedy = self.model.generate(
+                input_ids=input_ids,
+                attention_mask=attention_mask,
+                do_sample=False, # Greedy decoding
+                max_length=CONFIG['max_gen_length'],
+                output_scores=True,
+                return_dict_in_generate=True
+            )
+
+            generated_outputs_sampled = self.model.generate(
+                input_ids=input_ids,
+                attention_mask=attention_mask,
+                do_sample=True,
+                temperature=CONFIG.get("temperature", 0.7),
+                max_length=CONFIG['max_gen_length'],
+                output_scores=True,
+                return_dict_in_generate=True
+            )
+
+            # Retrieve generated tokens and decode them into texts
+            generated_tokens = generated_outputs_sampled.sequences
+            logits = generated_outputs_sampled.scores
+            generated_texts = self.tokenizer.batch_decode(generated_tokens, skip_special_tokens=True)
+
+            generated_tokens_greedy = generated_outputs_greedy.sequences
+            generated_texts_greedy = self.tokenizer.batch_decode(generated_tokens_greedy, skip_special_tokens=True)
+
+            # ---------------------------
+            # Calculate scores for both decoded outputs
+            # ---------------------------
+            # Sampled outputs scores
+            score_pred_edited = self.metrics_evaluator.calculate_score(generated_texts, edited_endings).detach()
+            score_pred_original = self.metrics_evaluator.calculate_score(generated_texts, original_endings).detach()
+
+            # Greedy outputs scores
+            score_pred_edited_greedy = self.metrics_evaluator.calculate_score(generated_texts_greedy, edited_endings).detach()
+            score_pred_original_greedy = self.metrics_evaluator.calculate_score(generated_texts_greedy, original_endings).detach()
+
+            # ---------------------------
+            # Compute ΔM1 (delta_m1) for both sampled and greedy
+            # ---------------------------
+            delta_m1_sampled = score_pred_edited - score_pred_original
+            delta_m1_greedy = score_pred_edited_greedy - score_pred_original_greedy
+
+            # ---------------------------
+            # Calculate the new reward as per the request:
+            # reward = [BART_score(sampled, edited ending) + ΔM1_sampled] - [BART_score(greedy, edited ending) + ΔM1_greedy]
+            # ---------------------------
+            rewards = (score_pred_edited + delta_m1_sampled) - (score_pred_edited_greedy + delta_m1_greedy)
+            dynamic_baseline = 0.0
+        else:
+            # Original forward pass
+            generated_tokens, logits = self.forward(input_ids=input_ids, attention_mask=attention_mask)
+            generated_texts = self.tokenizer.batch_decode(generated_tokens, skip_special_tokens=True)
+
+            score_pred_edited = self.metrics_evaluator.calculate_score(generated_texts, edited_endings).detach()
+            score_pred_original = self.metrics_evaluator.calculate_score(generated_texts, original_endings).detach()
+
+            if CONFIG["pg_experiment"] == "fixed":
+                rewards = score_pred_edited - CONFIG["baseline_score"]
+                dynamic_baseline = 0.0
+            elif CONFIG["pg_experiment"] == "dynamic":
+                dynamic_baseline = score_pred_edited.mean().detach()
+                rewards = score_pred_edited - dynamic_baseline
+            elif CONFIG["pg_experiment"] == "delta_m1":
+                delta_m1 = score_pred_edited - score_pred_original
+                rewards = score_pred_edited + delta_m1
+                dynamic_baseline = rewards.mean().detach()
+                rewards = rewards - dynamic_baseline
+            else:
+                raise ValueError(f"Invalid PG experiment: {CONFIG['pg_experiment']}")
+
+        if CONFIG.get("objective_clipping", False):
+            rewards = torch.clamp(rewards, min=0.0)
+
+        pg_loss = self.calculate_policy_gradient_loss(generated_tokens, logits, rewards, baseline=dynamic_baseline)
+
+        # Logging
+        self.log('training_pg_loss', pg_loss, on_step=True, on_epoch=True, prog_bar=True, logger=True)
+        self.log('training_pg_reward_mean', rewards.mean(), on_step=True, on_epoch=True, prog_bar=True, logger=True)
+        # self.log('training_pg_baseline', dynamic_baseline, on_step=True, on_epoch=True, prog_bar=True, logger=True)
+
+        # if CONFIG["pg_experiment"] == "delta_m1":
+        #     self.log('training_pg_delta_m1_mean', delta_m1.mean().item(), on_step=True, on_epoch=True, prog_bar=True,
+        #              logger=True)
+        # elif CONFIG["pg_experiment"] == "SCST":
+        #     self.log('training_score_greedy', score_pred_edited_greedy.mean(), logger=True)
+        #
+        # logger.info(
+        #     f'[TRAIN] PG Loss: {pg_loss}, Baseline: {dynamic_baseline}, '
+        #     f'ΔM1 Mean: {delta_m1.mean().item() if CONFIG["pg_experiment"] == "delta_m1" else "N/A"}'
+        # )
+
+        return pg_loss
+
+    def validation_step(self, batch, batch_idx):
+        input_ids, attention_mask, labels = batch['input_ids'], batch['attention_mask'], batch['labels']
+        # print(f"Validation Step: Processing batch {batch_idx}")
+
+        # Generate texts
+        if CONFIG["pg_experiment"] == "SCST":
+            # Greedy (baseline) decoding
+            generated_outputs_greedy = self.model.generate(
+                input_ids=input_ids,
+                attention_mask=attention_mask,
+                do_sample=False,
+                max_length=CONFIG['max_gen_length'],
+                output_scores=True,
+                return_dict_in_generate=True
+            )
+            # Sampled decoding
+            generated_outputs_sampled = self.model.generate(
+                input_ids=input_ids,
+                attention_mask=attention_mask,
+                do_sample=True,
+                temperature=CONFIG.get("temperature", 0.7),
+                max_length=CONFIG['max_gen_length'],
+                output_scores=True,
+                return_dict_in_generate=True
+            )
+            # Retrieve generated tokens and decode texts
+            generated_tokens = generated_outputs_sampled.sequences
+            logits = generated_outputs_sampled.scores
+            generated_texts = self.tokenizer.batch_decode(generated_tokens, skip_special_tokens=True)
+
+            generated_tokens_greedy = generated_outputs_greedy.sequences
+            generated_texts_greedy = self.tokenizer.batch_decode(generated_tokens_greedy, skip_special_tokens=True)
+
+        else:
+            generated_tokens, logits = self.forward(input_ids=input_ids, attention_mask=attention_mask)
+            generated_texts = self.tokenizer.batch_decode(generated_tokens, skip_special_tokens=True)
+
+        # Debug empty sequences
+        for i, gen_text in enumerate(generated_texts):
+            if not gen_text.strip():
+                print(f"DEBUG: Empty generated text detected in validation batch {batch_idx}, sample index {i}.")
+                print(f"DEBUG: Input IDs: {input_ids[i]}")
+                if 'premise' in batch:
+                    print(f"DEBUG: Premise: {batch['premise'][i]}")
+                else:
+                    print("DEBUG: 'premise' not found in batch.")
+
+        edited_endings = [str(ee) for ee in batch['edited_ending']]
+        original_endings = [str(oe) for oe in batch['original_ending']]
+
+        # Calculate scores with robust error handling
+        try:
+            if CONFIG["pg_experiment"] == "SCST":
+                # Calculate scores for sampled outputs (edited and original)
+                score_pred_edited = self.metrics_evaluator.calculate_score(generated_texts, edited_endings).detach()
+                score_pred_original = self.metrics_evaluator.calculate_score(generated_texts, original_endings).detach()
+                # Calculate scores for greedy outputs (edited and original)
+                score_pred_edited_greedy = self.metrics_evaluator.calculate_score(generated_texts_greedy, edited_endings).detach()
+                score_pred_original_greedy = self.metrics_evaluator.calculate_score(generated_texts_greedy, original_endings).detach()
+
+                # Compute ΔM1 for sampled and greedy outputs
+                delta_m1_sampled = score_pred_edited - score_pred_original
+                delta_m1_greedy = score_pred_edited_greedy - score_pred_original_greedy
+
+                # New reward computation
+                rewards = (score_pred_edited + delta_m1_sampled) - (score_pred_edited_greedy + delta_m1_greedy)
+                dynamic_baseline = 0.0
+            else:
+                score_pred_edited = self.metrics_evaluator.calculate_score(generated_texts, edited_endings).detach()
+
+                if CONFIG["pg_experiment"] == "fixed":
+                    rewards = score_pred_edited - CONFIG["baseline_score"]
+                    dynamic_baseline = 0.0
+                elif CONFIG["pg_experiment"] == "dynamic":
+                    dynamic_baseline = score_pred_edited.mean().detach()
+                    rewards = score_pred_edited - dynamic_baseline
+                elif CONFIG["pg_experiment"] == "delta_m1":
+                    score_pred_original = self.metrics_evaluator.calculate_score(generated_texts, original_endings).detach()
+                    delta_m1 = score_pred_edited - score_pred_original
+                    rewards = score_pred_edited + delta_m1
+                    dynamic_baseline = rewards.mean().detach()
+                    rewards = rewards - dynamic_baseline
+
+            # Apply objective clipping if enabled (BEFORE loss calculation)
+            if CONFIG.get("objective_clipping", False):
+                rewards = torch.clamp(rewards, min=0.0)
+            # Final NaN protection (safety net)
+            rewards = torch.nan_to_num(rewards, nan=0.0)
+
+        except Exception as e:
+            print(f"Error calculating scores: {e}")
+            rewards = torch.zeros(len(generated_texts), device=self.device)
+            dynamic_baseline = 0.0
+
+        if CONFIG.get("objective_clipping", False):
+            rewards = torch.clamp(rewards, min=0.0)
+
+        # Calculate loss with protected rewards
+        pg_val_loss = self.calculate_policy_gradient_loss(generated_tokens, logits, rewards, baseline=0.0)
+
+        # Logging
+        self.log('validation_pg_loss', pg_val_loss, on_epoch=True, prog_bar=True, logger=True)
+        self.log('validation_pg_reward_mean', rewards.mean(), on_epoch=True, prog_bar=True, logger=True)
+        # self.log('validation_pg_baseline', dynamic_baseline, on_epoch=True, prog_bar=True, logger=True)
+
+        # if CONFIG["pg_experiment"] == "delta_m1":
+        #     self.log('validation_pg_delta_m1_mean', delta_m1.mean().item(), on_epoch=True, prog_bar=True, logger=True)
+        # elif CONFIG["pg_experiment"] == "SCST":
+        #     self.log('validation_score_greedy', score_pred_edited_greedy.mean(), logger=True)
+
+        # Save validation details
+        for i in range(len(generated_texts)):
+            detail = {
+                'Premise': batch['premise'][i],
+                'Initial': batch['initial'][i],
+                'Counterfactual': batch['counterfactual'][i],
+                'Original Ending': batch['original_ending'][i],
+                'Edited Ending': edited_endings[i],
+                'Generated Text': generated_texts[i]
+            }
+            if CONFIG["pg_experiment"] == "SCST":
+                detail['Generated Text Greedy'] = generated_texts_greedy[i]
+            self.epoch_validation_details.append(detail)
+
+        # logger.info(
+        #     f'[VALIDATION] Epoch {self.current_epoch} | PG Loss: {pg_val_loss}, '
+        #     f'ΔM1 Mean: {delta_m1.mean().item() if CONFIG["pg_experiment"] == "delta_m1" else "N/A"}'
+        # )
+
+        return pg_val_loss
+
+    def test_step(self, batch, batch_idx):
+        input_ids, attention_mask, labels = batch['input_ids'], batch['attention_mask'], batch['labels']
+
+        if CONFIG["pg_experiment"] == "SCST":
+            generated_outputs_greedy = self.model.generate(
+                input_ids=input_ids,
+                attention_mask=attention_mask,
+                do_sample=False,
+                max_length=CONFIG['max_gen_length'],
+                output_scores=True,
+                return_dict_in_generate=True
+            )
+
+            generated_outputs_sampled = self.model.generate(
+                input_ids=input_ids,
+                attention_mask=attention_mask,
+                do_sample=True,
+                temperature=CONFIG.get("temperature", 0.7),
+                max_length=CONFIG['max_gen_length'],
+                output_scores=True,
+                return_dict_in_generate=True
+            )
+
+            generated_tokens = generated_outputs_sampled.sequences
+            logits = generated_outputs_sampled.scores
+            generated_texts = self.tokenizer.batch_decode(generated_tokens, skip_special_tokens=True)
+
+            generated_tokens_greedy = generated_outputs_greedy.sequences
+            generated_texts_greedy = self.tokenizer.batch_decode(generated_tokens_greedy, skip_special_tokens=True)
+
+        else:
+            generated_tokens, logits = self.forward(input_ids=input_ids, attention_mask=attention_mask)
+            generated_texts = self.tokenizer.batch_decode(generated_tokens, skip_special_tokens=True)
+
+        edited_endings = [str(ee) for ee in batch['edited_ending']]
+        original_endings = [str(oe) for oe in batch['original_ending']]
+
+        if CONFIG["pg_experiment"] == "SCST":
+            # Compute scores for sampled outputs
+            score_pred_edited = self.metrics_evaluator.calculate_score(generated_texts, edited_endings).detach()
+            score_pred_original = self.metrics_evaluator.calculate_score(generated_texts, original_endings).detach()
+            # Compute scores for greedy outputs
+            score_pred_edited_greedy = self.metrics_evaluator.calculate_score(generated_texts_greedy, edited_endings).detach()
+            score_pred_original_greedy = self.metrics_evaluator.calculate_score(generated_texts_greedy, original_endings).detach()
+
+            # Compute ΔM1 for sampled and greedy outputs
+            delta_m1_sampled = score_pred_edited - score_pred_original
+            delta_m1_greedy = score_pred_edited_greedy - score_pred_original_greedy
+
+            # New reward computation as per the updated formula
+            rewards = (score_pred_edited + delta_m1_sampled) - (score_pred_edited_greedy + delta_m1_greedy)
+            dynamic_baseline = 0.0
+        else:
+            score_pred_edited = self.metrics_evaluator.calculate_score(generated_texts, edited_endings).detach()
+            score_pred_original = self.metrics_evaluator.calculate_score(generated_texts, original_endings).detach()
+
+            if CONFIG["pg_experiment"] == "fixed":
+                rewards = score_pred_edited - CONFIG["baseline_score"]
+                dynamic_baseline = 0.0
+            elif CONFIG["pg_experiment"] == "dynamic":
+                dynamic_baseline = score_pred_edited.mean().detach()
+                rewards = score_pred_edited - dynamic_baseline
+            elif CONFIG["pg_experiment"] == "delta_m1":
+                delta_m1 = score_pred_edited - score_pred_original
+                rewards = score_pred_edited + delta_m1
+                dynamic_baseline = rewards.mean().detach()
+
+        if CONFIG.get("objective_clipping", False):
+            rewards = torch.clamp(rewards, min=0.0)
+
+        pg_test_loss = self.calculate_policy_gradient_loss(generated_tokens, logits, rewards, baseline=0.0)
+
+        # Logging
+        self.log('test_pg_loss', pg_test_loss, on_epoch=True, prog_bar=True, logger=True)
+        self.log('test_pg_reward_mean', rewards.mean(), on_epoch=True, prog_bar=True, logger=True)
+        # self.log('test_pg_baseline', dynamic_baseline, on_epoch=True, prog_bar=True, logger=True)
+        #
+        # if CONFIG["pg_experiment"] == "delta_m1":
+        #     self.log('test_pg_delta_m1_mean', delta_m1.mean().item(), on_epoch=True, prog_bar=True, logger=True)
+        # elif CONFIG["pg_experiment"] == "SCST":
+        #     self.log('test_score_greedy', score_pred_edited_greedy.mean(), logger=True)
+
+        # Save test details
+        for i in range(len(generated_texts)):
+            detail = {
+                'Premise': batch['premise'][i],
+                'Initial': batch['initial'][i],
+                'Counterfactual': batch['counterfactual'][i],
+                'Original Ending': batch['original_ending'][i],
+                'Edited Ending': edited_endings[i],
+                'Generated Text': generated_texts[i]
+            }
+            if CONFIG["pg_experiment"] == "SCST":
+                detail['Generated Text Greedy'] = generated_texts_greedy[i]
+            self.epoch_test_details.append(detail)
+
+        # logger.info(
+        #     f'[TEST] Epoch {self.current_epoch} | PG Loss: {pg_test_loss}, '
+        #     f'ΔM1 Mean: {delta_m1.mean().item() if CONFIG["pg_experiment"] == "delta_m1" else "N/A"}'
+        # )
+
+        return pg_test_loss
+
+    def log_to_csv(self, csv_file_path, details, epoch=None):
+        print(f"Writing {len(details)} entries to {csv_file_path}.")
+        file_exists = os.path.isfile(csv_file_path)
+
+        # Remove 'Epoch' if present, nothing else
+        for detail in details:
+            detail.pop('Epoch', None)
+
+        with open(csv_file_path, 'a', newline='', encoding='utf-8') as csvfile:
+            writer = csv.DictWriter(csvfile, fieldnames=details[0].keys())
+            if not file_exists:
+                writer.writeheader()
+            writer.writerows(details)
+
+    def configure_optimizers(self):
+        """
+        Configures the optimizer for the model.
+        """
+        return torch.optim.AdamW(self.parameters(), lr=CONFIG["learning_rate"])
