@@ -4,7 +4,7 @@ from sacrebleu.metrics import BLEU
 from rouge import Rouge
 from bert_score import BERTScorer
 import torch
-from src.pg.utils.configppo import CONFIG
+from src.pg.utils.config import CONFIG
 from src.BARTScore_metric.bart_score import BARTScorer
 
 logger = logging.getLogger(__name__)

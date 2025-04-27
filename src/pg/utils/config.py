@@ -17,9 +17,9 @@ CONFIG = {
 
     # ******** Data files***********
     # Sample Timetravel sample datasets
-    "train_file": "train_supervised_small.json",
-    "dev_file": "dev_data.json",
-    "test_file": "test_data.json",
+    "train_file": "train_supervised_small_sample.json",
+    "dev_file": "dev_data_sample.json",
+    "test_file": "test_data_sample.json",
     # 
     # Art dataset
     # "train_file": "art_train_data.json",
@@ -41,24 +41,24 @@ CONFIG = {
     "use_custom_loss": False,  # Whether to use a custom loss function (set to False for MLE)
     "output_attentions": False,  # Set to True to output attentions from the model (optional)
     # Additional configuration for scoring metrics
-    #"reward_metric": "bart",  # "rouge","bart", "bert","bleu" (default to "rouge")
+    "reward_metric": "bart",  # "rouge","bart", "bert","bleu" (default to "rouge")
     # Add temperature for sampling
     "temperature": 0.7,  # Temperature for sampling (default: 0.7)
 
     # **PG Experiment Selection**
-    # "pg_experiment": "dynamic",  # Options: "fixed", "dynamic", "delta_m1", "SCST"
-    # "delta_m1_enabled": False,  # Enable Delta_M1 reward adjustments
-    # "baseline_score": 0.5,  # Used for PG fixed baseline experiment
+    "pg_experiment": "delta_m1",  # Options: "fixed", "dynamic", "delta_m1", "SCST"
+    "delta_m1_enabled": False,  # Enable Delta_M1 reward adjustments
+    "baseline_score": 0.5,  # Used for PG fixed baseline experiment
 
 
-    # "pg_from_checkpoint": True,
-    # "pg_checkpoint_path": "/data/agirard/Projects/TimeTravel-PolicyGradientRL/models/model_2025-04-02-13/checkpoint-epoch=04-val_loss=2.04.ckpt",   # MLE10, Timetravel
-    # "pg_epochs": 1,  # Number of epochs to fine-tune with PG
+    "pg_from_checkpoint": False,
+    "pg_checkpoint_path": "/data/agirard/Projects/TimeTravel-PolicyGradientRL/models/model_2025-04-02-13/checkpoint-epoch=04-val_loss=2.04.ckpt",   # MLE10, Timetravel
+    "pg_epochs": 1,  # Number of epochs to fine-tune with PG
 
 
     # New configuration for PG objective modifications:
     "objective_clipping": False,  # Disable reward clipping (keep raw rewards as computed)
-    #"use_greedy_reward": False,   # Disable greedy decoding (use the sampled outputs as before)
+    "use_greedy_reward": False,   # Disable greedy decoding (use the sampled outputs as before)
   
     # Additional configuration for scoring metrics 
     "use_bert": True,  # Disable BERT scorer
