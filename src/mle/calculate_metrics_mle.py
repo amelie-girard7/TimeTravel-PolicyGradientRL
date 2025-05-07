@@ -39,17 +39,17 @@ def process_data(df):
             initials, premises, original_endings, logger
         ))
 
-        # BERT similarity
-        all_metrics.update(evaluator.calculate_and_log_bert_similarity(
-            generated_texts, edited_endings, counterfactuals,
-            initials, premises, original_endings, logger
-        ))
+        # # BERT similarity
+        # all_metrics.update(evaluator.calculate_and_log_bert_similarity(
+        #     generated_texts, edited_endings, counterfactuals,
+        #     initials, premises, original_endings, logger
+        # ))
 
-        # BLEU scores
-        all_metrics.update(evaluator.calculate_and_log_bleu_scores(
-            generated_texts, edited_endings, counterfactuals,
-            initials, premises, original_endings, logger
-        ))
+        # # BLEU scores
+        # all_metrics.update(evaluator.calculate_and_log_bleu_scores(
+        #     generated_texts, edited_endings, counterfactuals,
+        #     initials, premises, original_endings, logger
+        # ))
 
         # ROUGE scores
         all_metrics.update(evaluator.calculate_and_log_rouge_scores(
@@ -151,7 +151,7 @@ def main():
     """
     # List of repository directories to process
     repo_paths = [
-        '/data/agirard/Projects/TimeTravel-PolicyGradientRL/models/model_2025-04-17-22', # MLE6 Ablated
+        '/data/agirard/Projects/TimeTravel-PolicyGradientRL/models/model_2025-04-02-13', # MLE6 Ablated
         # Add other repositories as needed
     ]
 

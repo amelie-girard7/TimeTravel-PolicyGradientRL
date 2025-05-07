@@ -152,20 +152,19 @@ def load_dataframe(file_path):
 def main():
     # Define input file paths for T5 models.
     t5_files = {
-        "T5-Base 5-1": "/data/agirard/Projects/Timetravel/models/model_2024-09-03-17/test_details.csv",
-        "T5-Base 10-1": "/data/agirard/Projects/Timetravel/models/model_2024-09-03-20/test_details.csv",
-        "T5-Large 5-1": "/data/agirard/Projects/Timetravel/models/model_2024-08-30-11/test_details.csv",
-        "T5-Large 10-1": "/data/agirard/Projects/Timetravel/models/model_2024-08-30-06/test_details.csv"
+        "PG-Greedy": "/data/agirard/Projects/TimeTravel-PolicyGradientRL/models/pg_2025-03-29-15/test_details_pg_20250330_110435.csv",
+        "PG-Batch_mean": "/data/agirard/Projects/TimeTravel-PolicyGradientRL/models/pg_2025-03-31-19/test_details_pg_20250401_110802.csv",
+        "PPO": "/data/agirard/Projects/TimeTravel-PolicyGradientRL/models/ppo_2025-04-30-19/test_details_ppo_20250502_065948_metrics.csv",
     }
     # Define GPT variants with their corresponding file paths.
     gpt_files = {
-        "GPT_OneShotFixed": "/data/agirard/Projects/Timetravel/results/one_shot_results_fixed.csv",
-        "GPT_OneShotRandom": "/data/agirard/Projects/Timetravel/results/one_shot_results_random.csv",
-        "GPT_ZeroShot": "/data/agirard/Projects/Timetravel/results/zero_shot_results.csv"
+        "GPT_OneShotFixed": "/data/agirard/Projects/TimeTravel-PolicyGradientRL/results/gpt-4o/one_shot_results_fixed.csv",
+        "GPT_OneShotRandom": "/data/agirard/Projects/TimeTravel-PolicyGradientRL/results/gpt-4o/one_shot_results_random.csv",
+        "GPT_ZeroShot": "/data/agirard/Projects/TimeTravel-PolicyGradientRL/results/gpt-4o/zero_shot_results.csv"
     }
 
     # Define output directory.
-    output_dir = "/home/agirard/Data/Projects/Timetravel/results/Bootstrap"
+    output_dir = "/data/agirard/Projects/TimeTravel-PolicyGradientRL/results/Bootstrap"
     os.makedirs(output_dir, exist_ok=True)
 
     # Initialize evaluators.

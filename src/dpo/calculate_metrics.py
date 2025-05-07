@@ -1,7 +1,7 @@
 import os
 import pandas as pd
 import logging
-from src.pg.utils.metrics import MetricsEvaluator
+from src.dpo.utils.metrics_dpo import MetricsEvaluator
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -58,12 +58,12 @@ def process_data(df):
     all_metrics.update(evaluator.calculate_and_log_bart_similarity(
         generated_texts, edited_endings, counterfactuals, initials, premises, original_endings, logger
     ))
-    # all_metrics.update(evaluator.calculate_and_log_bert_similarity(
-    #     generated_texts, edited_endings, counterfactuals, initials, premises, original_endings, logger
-    # ))
-    # all_metrics.update(evaluator.calculate_and_log_bleu_scores(
-    #     generated_texts, edited_endings, counterfactuals, initials, premises, original_endings, logger
-    # ))
+    all_metrics.update(evaluator.calculate_and_log_bert_similarity(
+        generated_texts, edited_endings, counterfactuals, initials, premises, original_endings, logger
+    ))
+    all_metrics.update(evaluator.calculate_and_log_bleu_scores(
+        generated_texts, edited_endings, counterfactuals, initials, premises, original_endings, logger
+    ))
     all_metrics.update(evaluator.calculate_and_log_rouge_scores(
         generated_texts, edited_endings, counterfactuals, initials, premises, original_endings, logger
     ))
@@ -130,11 +130,7 @@ def main():
     For each repository, you specify a prefix to select the files you want.
     """
     repo_paths = [
-        # '/data/agirard/Projects/TimeTravel-PolicyGradientRL/models/pg_2025-04-28-13-14-09',
-        # '/data/agirard/Projects/TimeTravel-PolicyGradientRL/models/pg_2025-04-29-08-03-12',
-        # '/data/agirard/Projects/TimeTravel-PolicyGradientRL/models/pg_2025-04-29-19-02-50',
-        # '/data/agirard/Projects/TimeTravel-PolicyGradientRL/models/pg_2025-04-30-05-34-55',
-        '/data/agirard/Projects/TimeTravel-PolicyGradientRL/models/model_2025-04-29-14', #ART MLE 10
+        '/data/agirard/Projects/TimeTravel-PolicyGradientRL/models/ppo_2025-04-09-20',
     ]
 
     try:

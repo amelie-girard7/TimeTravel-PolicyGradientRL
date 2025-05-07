@@ -7,7 +7,7 @@ import pandas as pd
 import torch
 import torch.nn.utils.rnn
 import uuid  # Add this import statement
-from src.pg.utils.config import CONFIG
+from src.dpo.utils.config_dpo import CONFIG
 
 logger = logging.getLogger(__name__)
 
@@ -39,6 +39,28 @@ def load_first_line_from_json(file_path):
         logger.error(f"Error reading from {file_path}: {e}")
         raise IOError(f"Error reading from {file_path}: {e}")
 
+
+# def calculate_differential_weights(tokenized_labels, tokenizer, differences, high_weight=1, base_weight=1):
+#     """
+#     Calculate differential weights for tokenized labels (edited endings) based on diff
+#     erences.
+#     """
+#     # Initialize differential weights with base_weight
+#     differential_weights = torch.full(tokenized_labels.shape, fill_value=base_weight, dtype=torch.float)
+
+#     # Flatten the list of differences for easy checking
+#     difference_tokens_ids = set(
+#         [item for sublist in [tokenizer.encode(diff, add_special_tokens=False) for diff in differences] for item in
+#          sublist])
+
+#     # Adjust weights for tokens present in differences
+#     for i, token_id in enumerate(tokenized_labels.squeeze().tolist()):
+#         if token_id in difference_tokens_ids:
+#             differential_weights[i] = high_weight
+
+#     return differential_weights
+
+
 def preprocess_data(row, tokenizer):
     """
     Prepares a single row of data for model input by tokenizing the text fields.
@@ -62,8 +84,8 @@ def preprocess_data(row, tokenizer):
                 f"{row['premise']} {row['counterfactual']}"
             )
             target_sequence = row['edited_ending']
-            # print(f"Input Sequence (ART/AblatdTimeTravel):{input_sequence}")
-            # print(f"Target Sequence: {target_sequence}")
+            print(f"Input Sequence (ART/AblatdTimeTravel):{input_sequence}")
+            print(f"Target Sequence: {target_sequence}")
 
         elif dataset_type == "TimeTravel":
             # TimeTravel Dataset: Input = premise + initial + original_ending + counterfactual; Output = edited_ending
@@ -92,15 +114,29 @@ def preprocess_data(row, tokenizer):
         )
         # print(f"Tokenized Ending: {tokenized_ending}")
 
+        # Calculate differential weights based on the list of differences provided for each token. This highlights tokens
+        # that are directly associated with the differences, aiming to adjust the model's focus and learning priority.
+        # differential_weights = calculate_differential_weights(
+        #     tokenized_ending['input_ids'].squeeze(), tokenizer, row['differences']
+        # )
+        # print(f"Differential Weights: {differential_weights}")
+
+        # Ensure that 'differential_weights' matches the length of 'labels'
+        # assert tokenized_ending['input_ids'].squeeze(
+        #     0).size() == differential_weights.size(), "Mismatch between labels and differential weights length."
+
         # print(f"Input IDs: {tokenized_inputs['input_ids']}")
         # print(f"Attention Mask: {tokenized_inputs['attention_mask']}")
         # print(f"Labels: {tokenized_ending['input_ids']}")
+        # print(f"Differential Weights: {differential_weights}")
 
         # Prepare the final output dictionary
         return {
             'input_ids': tokenized_inputs['input_ids'].squeeze(0),
             'attention_mask': tokenized_inputs['attention_mask'].squeeze(0),
             'labels': tokenized_ending['input_ids'].squeeze(0),
+            # 'differential_weights': differential_weights.squeeze(0),
+            # Ensure the differential weights are correctly sized.
             # Include non-tokenized data for metric calculations.
             'premise': row['premise'],
             'initial': row['initial'],
@@ -142,7 +178,7 @@ def collate_fn(batch, pad_token_id=0, attention_pad_value=0):
             original_ending.append("")  # Default empty string
 
     # print(f"Extracted Fields:\nPremises: {premise}\nInitials: {initial}\nOriginal Endings: {original_ending}\n"
-    #        f"Counterfactuals: {counterfactual}\nEdited Endings: {edited_ending}")  # Debug print for field values
+    #       f"Counterfactuals: {counterfactual}\nEdited Endings: {edited_ending}")  # Debug print for field values
 
     # Padding sequences for 'input_ids', 'attention_masks', and 'labels'
     input_ids_padded = torch.nn.utils.rnn.pad_sequence(input_ids, batch_first=True, padding_value=pad_token_id)
@@ -150,17 +186,23 @@ def collate_fn(batch, pad_token_id=0, attention_pad_value=0):
                                                              padding_value=attention_pad_value)
     labels_padded = torch.nn.utils.rnn.pad_sequence(labels, batch_first=True, padding_value=pad_token_id)
 
+    # Convert differential_weights to tensors and pad
+    # differential_weights_tensors = [dw.clone().detach().to(input_ids_padded.device) for dw in differential_weights]
+    # differential_weights_padded = torch.nn.utils.rnn.pad_sequence(differential_weights_tensors, batch_first=True,
+    #                                                               padding_value=1)
 
     # Debug prints
     # print(f"input_ids_padded shape: {input_ids_padded.shape}")
     # print(f"attention_masks_padded shape: {attention_masks_padded.shape}")
     # print(f"labels_padded shape: {labels_padded.shape}")
+    # print(f"differential_weights_padded shape: {differential_weights_padded.shape}")
 
     # Return the padded tensors along with the additional fields for evaluation.
     return {
         'input_ids': input_ids_padded,
         'attention_mask': attention_masks_padded,
         'labels': labels_padded,
+        #'differential_weights': differential_weights_padded,
         'premise': premise,
         'initial': initial,
         'original_ending': original_ending,

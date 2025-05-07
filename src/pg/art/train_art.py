@@ -1,4 +1,4 @@
-# /data/agirard/Projects/TimeTravel-PolicyGradientRL/src/pg/main_pg.py
+# /data/agirard/Projects/TimeTravel-PolicyGradientRL/src/pg/art/train_art.py
 
 import sys
 import os
@@ -10,10 +10,10 @@ from transformers import T5Tokenizer
 from pytorch_lightning import Trainer
 from pytorch_lightning.callbacks import ModelCheckpoint, EarlyStopping
 from pytorch_lightning.loggers import WandbLogger
-from src.pg.models.model import FlanT5FineTuner
-from src.pg.data_loader import create_dataloaders
-from src.pg.utils.metrics import MetricsEvaluator
-from src.pg.utils.config import CONFIG
+from src.pg.art.models.model_art import FlanT5FineTuner
+from src.pg.art.data_loader_art import create_dataloaders
+from src.pg.art.utils.metrics_art import MetricsEvaluator
+from src.pg.art.utils.config_art import CONFIG
 import re
 import wandb
 

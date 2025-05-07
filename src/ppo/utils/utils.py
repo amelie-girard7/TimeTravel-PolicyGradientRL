@@ -7,7 +7,7 @@ import pandas as pd
 import torch
 import torch.nn.utils.rnn
 import uuid  # Add this import statement
-from src.pg.utils.config import CONFIG
+from src.ppo.utils.config_ppo import CONFIG
 
 logger = logging.getLogger(__name__)
 
@@ -39,6 +39,7 @@ def load_first_line_from_json(file_path):
         logger.error(f"Error reading from {file_path}: {e}")
         raise IOError(f"Error reading from {file_path}: {e}")
 
+
 def preprocess_data(row, tokenizer):
     """
     Prepares a single row of data for model input by tokenizing the text fields.
@@ -62,8 +63,8 @@ def preprocess_data(row, tokenizer):
                 f"{row['premise']} {row['counterfactual']}"
             )
             target_sequence = row['edited_ending']
-            # print(f"Input Sequence (ART/AblatdTimeTravel):{input_sequence}")
-            # print(f"Target Sequence: {target_sequence}")
+            print(f"Input Sequence (ART/AblatdTimeTravel):{input_sequence}")
+            print(f"Target Sequence: {target_sequence}")
 
         elif dataset_type == "TimeTravel":
             # TimeTravel Dataset: Input = premise + initial + original_ending + counterfactual; Output = edited_ending
@@ -96,6 +97,7 @@ def preprocess_data(row, tokenizer):
         # print(f"Attention Mask: {tokenized_inputs['attention_mask']}")
         # print(f"Labels: {tokenized_ending['input_ids']}")
 
+
         # Prepare the final output dictionary
         return {
             'input_ids': tokenized_inputs['input_ids'].squeeze(0),
@@ -126,7 +128,6 @@ def collate_fn(batch, pad_token_id=0, attention_pad_value=0):
     input_ids = [item['input_ids'] for item in batch]
     attention_mask = [item['attention_mask'] for item in batch]
     labels = [item['labels'] for item in batch]
-    #differential_weights = [item['differential_weights'] for item in batch]
     premise = [item['premise'] for item in batch]
     initial = [item['initial'] for item in batch]
     counterfactual = [item['counterfactual'] for item in batch]
@@ -142,14 +143,13 @@ def collate_fn(batch, pad_token_id=0, attention_pad_value=0):
             original_ending.append("")  # Default empty string
 
     # print(f"Extracted Fields:\nPremises: {premise}\nInitials: {initial}\nOriginal Endings: {original_ending}\n"
-    #        f"Counterfactuals: {counterfactual}\nEdited Endings: {edited_ending}")  # Debug print for field values
+    #       f"Counterfactuals: {counterfactual}\nEdited Endings: {edited_ending}")  # Debug print for field values
 
     # Padding sequences for 'input_ids', 'attention_masks', and 'labels'
     input_ids_padded = torch.nn.utils.rnn.pad_sequence(input_ids, batch_first=True, padding_value=pad_token_id)
     attention_masks_padded = torch.nn.utils.rnn.pad_sequence(attention_mask, batch_first=True,
                                                              padding_value=attention_pad_value)
     labels_padded = torch.nn.utils.rnn.pad_sequence(labels, batch_first=True, padding_value=pad_token_id)
-
 
     # Debug prints
     # print(f"input_ids_padded shape: {input_ids_padded.shape}")

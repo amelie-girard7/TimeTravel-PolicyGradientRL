@@ -1,4 +1,4 @@
-# /data/agirard/Projects/TimeTravel-PolicyGradientRL/src/mle/utils/utils.py
+#/data/agirard/Projects/TimeTravel-PolicyGradientRL/src/pg/art/utils/utils.py
 import time
 import json
 import logging
@@ -7,7 +7,7 @@ import pandas as pd
 import torch
 import torch.nn.utils.rnn
 import uuid  # Add this import statement
-from src.pg.utils.config import CONFIG
+from src.pg.art.utils.config_art import CONFIG
 
 logger = logging.getLogger(__name__)
 
@@ -105,9 +105,9 @@ def preprocess_data(row, tokenizer):
             'premise': row['premise'],
             'initial': row['initial'],
             'counterfactual': row['counterfactual'],
-            'edited_ending': row['edited_ending'],
+            'edited_ending': row['edited_ending']
             # Include original_ending only if available
-            **({'original_ending': row['original_ending']} if 'original_ending' in row else {})
+            # **({'original_ending': row['original_ending']} if 'original_ending' in row else {})
         }
 
     except Exception as e:
@@ -134,12 +134,12 @@ def collate_fn(batch, pad_token_id=0, attention_pad_value=0):
 
 
     # Handle original_ending - use empty string if not present
-    original_ending = []
-    for item in batch:
-        if 'original_ending' in item:
-            original_ending.append(item['original_ending'])
-        else:
-            original_ending.append("")  # Default empty string
+    # original_ending = []
+    # for item in batch:
+    #     if 'original_ending' in item:
+    #         original_ending.append(item['original_ending'])
+    #     else:
+    #         original_ending.append("")  # Default empty string
 
     # print(f"Extracted Fields:\nPremises: {premise}\nInitials: {initial}\nOriginal Endings: {original_ending}\n"
     #        f"Counterfactuals: {counterfactual}\nEdited Endings: {edited_ending}")  # Debug print for field values
@@ -163,7 +163,7 @@ def collate_fn(batch, pad_token_id=0, attention_pad_value=0):
         'labels': labels_padded,
         'premise': premise,
         'initial': initial,
-        'original_ending': original_ending,
+        # 'original_ending': original_ending,
         'counterfactual': counterfactual,
         'edited_ending': edited_ending,
     }

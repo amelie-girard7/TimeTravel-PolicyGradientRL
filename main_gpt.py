@@ -1,11 +1,11 @@
-# /data/agirard/Projects/Timetravel/main_gpt.py
+# /data/agirard/Projects/TimeTravel-PolicyGradientRL/main_gpt.py
 import os
 import sys
 import pandas as pd
 import uuid  # Ensure this import statement is present
-from src.utils.config import CONFIG
-from src.utils.utils import chatgpt_zero_shot_inference, chatgpt_one_shot_inference
-from src.utils.metrics import MetricsEvaluator
+from src.mle.utils.config import CONFIG
+from src.mle.utils.utils import chatgpt_zero_shot_inference, chatgpt_one_shot_inference
+from src.mle.utils.metrics import MetricsEvaluator
 import logging
 import time
 
@@ -24,49 +24,58 @@ def main():
     print(f"Example Selection: {CONFIG['example_selection']}")
 
     # Ensure API key is set
-    api_key = os.getenv("OPENAI_API_KEY")
-    if not api_key:
+    # api_key = os.getenv("OPENAI_API_KEY")
+    # if not api_key:
+    #     print("Error: Please set the OPENAI_API_KEY environment variable.")
+    #     sys.exit(1)
+
+    # Ensure API key is set (used internally by utils)
+    if not os.getenv("OPENAI_API_KEY"):
         print("Error: Please set the OPENAI_API_KEY environment variable.")
         sys.exit(1)
 
-    # Path to the gold data file for fine-tuning and inference
-    gold_data_path = "/data/agirard/Projects/Timetravel/data/transformed/gold_without_diff.json"
+    # Path to the test data file for fine-tuning and inference
+    test_data_path = "/data/agirard/Projects/TimeTravel-PolicyGradientRL/data/transformed/test_data_sample.json"
 
-    # Check if the gold data file exists
-    if not os.path.exists(gold_data_path):
-        print(f"Gold data file does not exist: {gold_data_path}")
+    # Check if the test data file exists
+    if not os.path.exists(test_data_path):
+        print(f"Gold data file does not exist: {test_data_path}")
         return
 
-    # Load the gold data
-    print(f"Loading gold data from: {gold_data_path}")
-    gold_data = pd.read_json(gold_data_path, lines=True)
-    print("Gold data loaded successfully. Sample data:")
-    print(gold_data.head())  # Print the first few rows of the gold data for debugging
+    # Load the test data
+    print(f"Loading test data from: {test_data_path}")
+    test_data = pd.read_json(test_data_path, lines=True)
+    print("test data loaded successfully. Sample data:")
+    print(test_data.head())  # Print the first few rows of the test data for debugging
 
     results_path = None
     if not CONFIG["run_similarities_only"]:
         # Run the specified mode
         if CONFIG["inference_mode"] == "zero_shot":
             # Run zero-shot inference using ChatGPT
-            print(f"Running zero-shot inference with API key: {api_key[:4]}...")  # Print the first 4 characters of the API key for debugging
-            results = chatgpt_zero_shot_inference(api_key, gold_data)
+            #print(f"Running zero-shot inference with API key: {api_key[:4]}...")  # Print the first 4 characters of the API key for debugging
+            #results = chatgpt_zero_shot_inference(api_key, test_data)
+
+            print("Running zero-shot inference...")
+            results = chatgpt_zero_shot_inference(test_data)
+
             print("Zero-shot inference completed. Sample results:")
             print(results[:2])  # Print the first few results for debugging
 
             # Save the results to a CSV file
-            results_path = "/data/agirard/Projects/Timetravel/results/zero_shot_results.csv"
+            results_path = "/data/agirard/Projects/TimeTravel-PolicyGradientRL/results/gpt-41/zero_shot_results.csv"
         elif CONFIG["inference_mode"] == "one_shot":
             # Run one-shot inference using ChatGPT
-            print(f"Running one-shot inference with API key: {api_key[:4]}...")  # Print the first 4 characters of the API key for debugging
-            results = chatgpt_one_shot_inference(api_key, gold_data, CONFIG["example_selection"])
+            print("Running one-shot inference...")
+            results = chatgpt_one_shot_inference(test_data, CONFIG["example_selection"])
             print("One-shot inference completed. Sample results:")
             print(results[:2])  # Print the first few results for debugging
 
             # Save the results to a CSV file
             if CONFIG["example_selection"] == "random":
-                results_path = "/data/agirard/Projects/Timetravel/results/one_shot_results_random.csv"
+                results_path = "/data/agirard/Projects/TimeTravel-PolicyGradientRL/results/gpt-41/one_shot_results_random.csv"
             else:
-                results_path = "/data/agirard/Projects/Timetravel/results/one_shot_results_fixed.csv"
+                results_path = "/data/agirard/Projects/TimeTravel-PolicyGradientRL/results/gpt-41/one_shot_results_fixed.csv"
         else:
             print(f"Unknown mode: {CONFIG['inference_mode']}")
             return
@@ -77,12 +86,12 @@ def main():
     else:
         # If running similarities only, load the existing results
         if CONFIG["inference_mode"] == "zero_shot":
-            results_path = "/data/agirard/Projects/Timetravel/results/zero_shot_results.csv"
+            results_path = "/data/agirard/Projects/TimeTravel-PolicyGradientRL/results/gpt-41/zero_shot_results.csv"
         elif CONFIG["inference_mode"] == "one_shot":
             if CONFIG["example_selection"] == "random":
-                results_path = "/data/agirard/Projects/Timetravel/results/one_shot_results_random.csv"
+                results_path = "/data/agirard/Projects/TimeTravel-PolicyGradientRL/results/gpt-41/one_shot_results_random.csv"
             else:
-                results_path = "/data/agirard/Projects/Timetravel/results/one_shot_results_fixed.csv"
+                results_path = "/data/agirard/Projects/TimeTravel-PolicyGradientRL/results/gpt-41/one_shot_results_fixed.csv"
         else:
             print(f"Invalid mode for running similarities: {CONFIG['inference_mode']}")
             return
@@ -121,19 +130,6 @@ def run_similarity_metrics(results, results_path):
     )
     all_metrics.update(bart_scores)
 
-    # Calculate BERT scores
-    print("Calculating BERT similarity scores...")
-    bert_scores = metrics_evaluator.calculate_and_log_bert_similarity(
-        generated_texts, edited_endings, counterfactuals, initials, premises, original_endings, logger
-    )
-    all_metrics.update(bert_scores)
-
-    # Calculate BLEU scores
-    print("Calculating BLEU scores...")
-    bleu_scores = metrics_evaluator.calculate_and_log_bleu_scores(
-        generated_texts, edited_endings, counterfactuals, initials, premises, original_endings, logger
-    )
-    all_metrics.update(bleu_scores)
 
     # Calculate ROUGE scores
     print("Calculating ROUGE scores...")

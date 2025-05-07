@@ -1,4 +1,4 @@
-#/data/agirard/Projects/Timetravel/main_gemini.py
+#/data/agirard/Projects/TimeTravel-PolicyGradientRL/main_gemini.py
 """
 Main script for generating text using Gemini 2.0.
 It loads gold data, runs inference (zero-shot or one-shot) using Gemini 2.0,
@@ -13,9 +13,9 @@ import logging
 import pandas as pd
 
 # Import configuration and Gemini 2.0 inference functions only
-from src.utils.config import CONFIG
-from src.utils.utils import gemini_zero_shot_inference, gemini_one_shot_inference
-from src.utils.metrics import MetricsEvaluator
+from src.mle.utils.config import CONFIG
+from src.mle.utils.utils import gemini_zero_shot_inference, gemini_one_shot_inference
+from src.mle.utils.metrics import MetricsEvaluator
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -42,18 +42,6 @@ def run_similarity_metrics(results, results_path):
         generated_texts, edited_endings, counterfactuals, initials, premises, original_endings, logger
     )
     all_metrics.update(bart_scores)
-
-    logger.info("Calculating BERT similarity scores...")
-    bert_scores = metrics_evaluator.calculate_and_log_bert_similarity(
-        generated_texts, edited_endings, counterfactuals, initials, premises, original_endings, logger
-    )
-    all_metrics.update(bert_scores)
-
-    logger.info("Calculating BLEU scores...")
-    bleu_scores = metrics_evaluator.calculate_and_log_bleu_scores(
-        generated_texts, edited_endings, counterfactuals, initials, premises, original_endings, logger
-    )
-    all_metrics.update(bleu_scores)
 
     logger.info("Calculating ROUGE scores...")
     rouge_scores = metrics_evaluator.calculate_and_log_rouge_scores(
@@ -86,7 +74,7 @@ def main():
         sys.exit(1)
 
     # Define the path to the gold data file
-    gold_data_path = "/data/agirard/Projects/Timetravel/data/transformed/gold_without_diff.json"
+    gold_data_path = "/data/agirard/Projects/TimeTravel-PolicyGradientRL/data/transformed/test_data_sample.json"
     if not os.path.exists(gold_data_path):
         print(f"Gold data file does not exist: {gold_data_path}")
         return
@@ -99,20 +87,21 @@ def main():
 
     results = None
     results_path = None
+    
 
     if not CONFIG["run_similarities_only"]:
         # Run Gemini 2.0 inference based on the selected mode
         if CONFIG["inference_mode"] == "zero_shot":
             print("Running Gemini 2.0 zero-shot inference...")
             results = gemini_zero_shot_inference(api_key, gold_data)
-            results_path = "/data/agirard/Projects/Timetravel/results/gemini/gemini_zero_shot_results.csv"
+            results_path = "/data/agirard/Projects/TimeTravel-PolicyGradientRL/results/gemini/gemini_zero_shot_results.csv"
         elif CONFIG["inference_mode"] == "one_shot":
             print("Running Gemini 2.0 one-shot inference...")
             results = gemini_one_shot_inference(api_key, gold_data, CONFIG["example_selection"])
             if CONFIG["example_selection"] == "random":
-                results_path = "/data/agirard/Projects/Timetravel/results/gemini/gemini_one_shot_results_random.csv"
+                results_path = "/data/agirard/Projects/TimeTravel-PolicyGradientRL/results/gemini/gemini_one_shot_results_random.csv"
             else:
-                results_path = "/data/agirard/Projects/Timetravel/results/gemini/gemini_one_shot_results_fixed.csv"
+                results_path = "/data/agirard/Projects/TimeTravel-PolicyGradientRL/results/gemini/gemini_one_shot_results_fixed.csv"
         else:
             print(f"Unknown inference mode: {CONFIG['inference_mode']}")
             return

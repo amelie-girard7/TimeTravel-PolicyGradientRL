@@ -1,4 +1,4 @@
-# /data/agirard/Projects/TimeTravel-PolicyGradientRL/src/pg/utils/config.py
+# /data/agirard/Projects/TimeTravel-PolicyGradientRL/src/pg/art/utils/config.py
 import os
 from pathlib import Path
 
@@ -13,18 +13,19 @@ CONFIG = {
     "models_dir": ROOT_DIR / "models",  # Directory to save models
     "logs_dir": ROOT_DIR / "logs",  # Directory for logs
     "results_dir": ROOT_DIR / "results",  # Directory for results (e.g., validation details)
-    "dataset_type": "TimeTravel",  # Options: "ART", "TimeTravel", "AblatedTimeTravel"
+    "dataset_type": "ART",  # Options: "ART", "AblatedTimeTravel"
 
     # ******** Data files***********
-    # Sample Timetravel sample datasets
-    # "train_file": "train_supervised_small_sample.json",
-    # "dev_file": "dev_data_sample.json",
-    # "test_file": "test_data_sample.json",
 
-    # Timetravel,AblatedTimeTravel datasets
+    # AblatedTimeTravel datasets
     # "train_file": "train_supervised_small.json",
     # "dev_file": "dev_data.json",
-    # "test_file": "test_data.json", 
+    # "test_file": "test_data.json",
+
+    # Art dataset
+    "train_file": "art_train_data.json",
+    "dev_file": "art_dev_data.json",
+    "test_file": "art_test_data.json",    
 
     # Model and training configurations
     "model_name": os.getenv('MODEL_NAME', "google/flan-t5-base"),  # Hugging Face model to load
@@ -46,13 +47,13 @@ CONFIG = {
     "temperature": 0.7,  # Temperature for sampling (default: 0.7)
 
     # **Experiment Selection**
-    "pg_experiment": "SCST",  # Options: "fixed", "dynamic", "delta_m1", "SCST"
+    "pg_experiment": "SCST",  # Options: "fixed", "dynamic", "SCST"
     "delta_m1_enabled": False,  # Enable Delta_M1 reward adjustments
     "baseline_score": 0.5,  # Used for PG fixed baseline experiment
 
     "pg_from_checkpoint": True,
     #"pg_checkpoint_path": "/data/agirard/Projects/TimeTravel-PolicyGradientRL/models/model_2024-03-22-10/checkpoint-epoch=05-val_loss=0.86.ckpt",   # MLE6_TT
-    # "pg_checkpoint_path": "/data/agirard/Projects/TimeTravel-PolicyGradientRL/models/model_2025-04-02-13/checkpoint-epoch=04-val_loss=2.04.ckpt", # Ablated MLE10 
+    #"pg_checkpoint_path": "/data/agirard/Projects/TimeTravel-PolicyGradientRL/models/model_2025-04-02-13/checkpoint-epoch=04-val_loss=2.04.ckpt", # Ablated MLE10 
     "pg_checkpoint_path": "/data/agirard/Projects/TimeTravel-PolicyGradientRL/models/model_2025-04-29-14/checkpoint-epoch=00-val_loss=1.93.ckpt", # ART - MLE10 
 
     "pg_epochs": 2,  # Number of epochs to fine-tune with PG
